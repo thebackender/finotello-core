@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finotello</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2318181b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1'/><path d='M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4'/></svg>">
+  <script>
+    // Set the theme before the first paint, so a dark page doesn't flash white.
+    // js/theme.js keeps this copy of the saved choice (data/settings.json) up to date.
+    (() => {
+      const mode = localStorage.getItem('fin.theme');
+      const dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
+  <link rel="stylesheet" href="vendor/coloris/coloris.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#overview">
+      <span class="logo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg></span>
+      Finotello
+    </a>
+    <nav id="tabs">
+      <a href="#overview" title="Overview (1)">Overview</a>
+      <a href="#transactions" title="Transactions (2)">Transactions</a>
+      <a href="#reports" title="Reports (3)">Reports</a>
+      <a href="#plans" title="Plans (4)">Plans</a>
+      <a href="#wallets" title="Wallets (5)">Wallets</a>
+      <a href="#settings" title="Settings (6)">Settings</a>
+    </nav>
+    <span class="spacer"></span>
+    <button id="backup-btn" class="ghost backup-btn" title="Back up now">
+      <svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+      <span class="backup-time"></span>
+    </button>
+    <button id="theme-btn" class="icon" title="Switch light / dark theme" aria-label="Switch light / dark theme">
+      <svg class="i only-light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      <svg class="i only-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2M20 12h2m-15.66 5.66-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    </button>
+    <button id="undo-btn" class="icon" title="Undo last action (Ctrl+Z)" aria-label="Undo" disabled>
+      <svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+    </button>
+    <button id="add-tx" class="primary" title="New transaction (N)">
+      <svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>
+      Transaction
+    </button>
+  </header>
+  <main id="view"></main>
+  <dialog id="dialog"></dialog>
+  <dialog id="confirm-dialog"></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <!-- Color picker for wallets and categories (sets window.Coloris) -->
+  <script src="vendor/coloris/coloris.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

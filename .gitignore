@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Personal finance data: the database, settings, backups (and renamed copies like data2/). Never commit.
+/data*/
