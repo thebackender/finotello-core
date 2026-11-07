@@ -1584,7 +1584,7 @@ def get_state(conn, day=None):
     totals = {k: ({t: rates.fmt_base(v) for t, v in val.items()} if isinstance(val, dict) else rates.fmt_base(val))
               for k, val in totals.items()}
     totals["cushion_wallets"] = has_cushion_wallets
-    totals["months_covered"] = (round(cushion_saved / monthly_required, 1) if monthly_required > 0 else None)
+    totals["months_covered"] = (round(max(0, cushion_saved) / monthly_required, 1) if monthly_required > 0 else None)
     totals["missing_rates"] = missing_rates
     return {
         "today": day, "month": day[:7],

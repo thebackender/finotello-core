@@ -87,7 +87,7 @@ export function render(view) {
           <div class="figure-line"><b>${esc(fmtBase(t.planned_total))}</b><span class="muted">in ${openPlans.length} plan${openPlans.length === 1 ? '' : 's'}</span></div>
           ${openPlans.length ? `<ul class="list compact">${openPlans.slice(0, 4).map((p) => `<li>
             <span class="grow">${esc(p.name)}</span><span class="num">${esc(fmtBase(p.amount_base))}</span></li>`).join('')}</ul>`
-            : '<p class="muted small">Nothing planned. Add a purchase or a treatment you are saving for.</p>'}
+            : '<p class="muted small">Nothing planned. Add a purchase or a treatment you are planning.</p>'}
         </section>
 
         <section class="card">
