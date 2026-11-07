@@ -19,6 +19,10 @@ Command-line options win over `.env`.
 The server listens on `127.0.0.1` only, so it isn't reachable from the network. The API also refuses requests from other
 sites open in your browser: it only accepts JSON, from this page's own address (`localhost` or `127.0.0.1`).
 
+A new database starts empty: no wallets, no categories, and one currency, USD, as the base. Add your currencies in
+Settings (and make one the base if it isn't USD); categories you create there, or right in a transaction by typing
+`Food:Groceries`.
+
 Tests: `python3 -m unittest discover tests`
 
 ## Tabs
@@ -118,7 +122,7 @@ Checked by the server (`LIMITS` in `db.py`); the UI stops typing at the same len
 ```
 server.py              HTTP server, routes, backups, .env
 db.py                  SQLite schema and migrations, money math, every change and query
-tests/                 unittest: db.py and the HTTP API
+tests/                 unittest: db.py and the HTTP API (fixtures.py: currencies and categories for tests)
 web/index.html         page
 web/style.css          styles
 web/js/app.js          tabs and keyboard shortcuts

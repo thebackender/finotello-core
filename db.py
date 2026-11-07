@@ -159,44 +159,12 @@ SCHEMA_1 = [
     "CREATE INDEX entries_category ON entries(category_id)",
 ]
 
-SEED_CURRENCIES = [
-    ("USD", "US dollar", "fiat", 2),
-    ("EUR", "Euro", "fiat", 2),
-    ("RUB", "Russian ruble", "fiat", 2),
-    ("BTC", "Bitcoin", "crypto", 8),
-    ("ETH", "Ether", "crypto", 8),
-    ("USDT", "Tether", "crypto", 6),
-]
-SEED_CATEGORIES = {
-    "expense": [
-        ("Food", ["Groceries", "Fruits", "Eating out"]),
-        ("Housing", ["Rent", "Utilities"]),
-        ("Transport", []),
-        ("Health", ["Medicine", "Dentist"]),
-        ("Shopping", []),
-        ("Entertainment", []),
-        ("Subscriptions", []),
-        ("Fees", []),
-    ],
-    "income": [("Salary", []), ("Freelance", []), ("Gifts", []), ("Other", [])],
-}
-
-
 def migration_1(conn):
+    # A new database starts empty: only the base currency, which totals need. Add the rest in Settings.
     for statement in SCHEMA_1:
         conn.execute(statement)
     conn.execute("INSERT INTO config (key, value) VALUES ('base_currency', 'USD'), ('cushion_target', '0')")
-    for code, name, kind, decimals in SEED_CURRENCIES:
-        conn.execute("INSERT INTO currencies (code, name, kind, decimals, rate) VALUES (?, ?, ?, ?, ?)",
-                     (code, name, kind, decimals, "1" if code == "USD" else "0"))
-    for kind, tree in SEED_CATEGORIES.items():
-        for n, (name, subs) in enumerate(tree):
-            color = PALETTE[n] if n < len(PALETTE) and name != "Fees" else OTHER_COLOR
-            parent = conn.execute("INSERT INTO categories (name, kind, color) VALUES (?, ?, ?)",
-                                  (name, kind, color)).lastrowid
-            for sub in subs:
-                conn.execute("INSERT INTO categories (name, kind, parent_id, color) VALUES (?, ?, ?, ?)",
-                             (sub, kind, parent, color))
+    conn.execute("INSERT INTO currencies (code, name, kind, decimals, rate) VALUES ('USD', 'US dollar', 'fiat', 2, '1')")
 
 
 def migration_2(conn):

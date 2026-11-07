@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import server  # noqa: E402
+import fixtures  # noqa: E402
 
 
 class ServerTest(unittest.TestCase):
@@ -23,6 +24,7 @@ class ServerTest(unittest.TestCase):
         server.SETTINGS_FILE = root / "settings.json"
         server.Handler.log_message = lambda *args: None  # keep the test output clean
         server.open_database(root / "finance.db")
+        fixtures.seed(server.database.conn)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         cls.port = cls.httpd.server_address[1]
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()

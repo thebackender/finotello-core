@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import db  # noqa: E402
+import fixtures  # noqa: E402
 from db import ApiError  # noqa: E402
 
 DAY = "2026-11-07"
@@ -18,6 +19,7 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.path = Path(self.tmp.name) / "finance.db"
         self.db = db.Database(self.path)
+        fixtures.seed(self.db.conn)
 
     def tearDown(self):
         self.db.close()
@@ -69,11 +71,14 @@ class Money(unittest.TestCase):
 
 class Seed(Base):
     def test_fresh_database(self):
-        state = self.state()
-        self.assertEqual(state["config"]["base_currency"], "USD")
-        paths = {c["path"] for c in state["categories"]}
-        self.assertIn("Food:Fruits", paths)
-        self.assertIn("Salary", paths)
+        fresh = db.Database(Path(self.tmp.name) / "fresh.db")
+        try:
+            state = fresh.read(db.get_state, DAY)
+            self.assertEqual(state["config"]["base_currency"], "USD")
+            self.assertEqual([c["code"] for c in state["currencies"]], ["USD"])  # only the base currency
+            self.assertEqual(state["categories"], [])
+        finally:
+            fresh.close()
         self.assertEqual(self.db.conn.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS))
 
     def test_old_database_is_migrated(self):
