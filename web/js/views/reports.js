@@ -1,15 +1,18 @@
 // The "Income and spending" part of the Overview tab: spending by category (a pie) and income by source
 // for a period. All in the base currency at the current rates.
+// The period is kept in the database (config report_from / report_to); empty means the current month.
 // It redraws only itself when the period changes; the rest of Overview stays.
 import * as api from '../api.js';
+import { store } from '../store.js';
 import { fmtBase, fmtBaseNum, toNum } from '../money.js';
 import { pieHTML, bindPie } from '../chart.js';
 import { getPrefs, setPrefs } from '../prefs.js';
 import {
-  esc, freshBox, today, monthRange, addMonths, fmtMonth, fmtDate, dateInput, bindDateInputs, readDate, paint, toast,
+  esc, freshBox, today, monthRange, paint, toast,
 } from '../util.js';
 import { categoryRanking } from './parts.js';
 import { icon } from '../icons.js';
+import { rangePicker } from '../rangepicker.js';
 
 const PIE_PARTS = 6; // more slices than this can't be told apart: the smallest fold into "Other"
 const FOLD_COLOR = '#c3c2b7'; // "Other": a light gray, apart from the gray of "No category" and "Fees"
@@ -53,31 +56,14 @@ function pieLegend(slices, open) {
   }).join('')}</ul>`;
 }
 
-const PRESETS = [
-  ['month', 'This month'], ['last-month', 'Last month'], ['3-months', 'Last 3 months'],
-  ['year', 'This year'], ['12-months', 'Last 12 months'], ['custom', 'Custom'],
-];
-
-/** The period of a preset: [from, to]. */
-function period(prefs) {
-  const now = today();
-  const month = now.slice(0, 7);
-  switch (prefs.preset) {
-    case 'last-month': return monthRange(addMonths(month, -1));
-    case '3-months': return [monthRange(addMonths(month, -2))[0], monthRange(month)[1]];
-    case 'year': return [`${now.slice(0, 4)}-01-01`, `${now.slice(0, 4)}-12-31`];
-    case '12-months': return [monthRange(addMonths(month, -11))[0], monthRange(month)[1]];
-    case 'custom': return [prefs.from || monthRange(month)[0], prefs.to || now];
-    default: return monthRange(month);
-  }
+/** The saved period: [from, to]. An empty end is that end of the current month. */
+function period() {
+  const [monthFrom, monthTo] = monthRange(today().slice(0, 7));
+  const { report_from: from, report_to: to } = store.state.config;
+  return [from || monthFrom, to || monthTo];
 }
 
-const periodLabel = (from, to) => {
-  if (from.slice(0, 7) === to.slice(0, 7) && from.endsWith('-01') && to === monthRange(to.slice(0, 7))[1]) return fmtMonth(from.slice(0, 7));
-  return `${fmtDate(from)} – ${fmtDate(to)}`;
-};
-
-const DEFAULTS = { preset: 'month', from: '', to: '', open: [] };
+const DEFAULTS = { open: [] }; // view options in data/settings.json; the period is in the database
 /** Keys of unfolded rows: category ids (numbers), null for "No category", "other" for the folded tail. */
 const openKey = (text) => (text === 'null' ? null : /^\d+$/.test(text) ? Number(text) : text);
 let seq = 0;
@@ -87,26 +73,30 @@ export function renderReports(container) {
   const root = freshBox(container);
   const prefs = getPrefs('reports', DEFAULTS);
   const open = new Set(prefs.open);
-  const [from, to] = period(prefs);
+  const [from, to] = period();
   const ticket = ++seq;
 
   root.innerHTML = `
     <div class="toolbar section-head">
       <h2>Income and spending</h2>
-      <div class="segmented presets">${PRESETS.map(([value, label]) => `<button type="button" data-preset="${value}" class="${prefs.preset === value ? 'on' : ''}">${label}</button>`).join('')}</div>
-      ${prefs.preset === 'custom' ? `<form class="range">${dateInput('from', from)}<span class="muted">–</span>${dateInput('to', to)}<button type="submit">Show</button></form>` : ''}
-      <span class="muted period-label">${esc(periodLabel(from, to))}</span>
+      <span class="period"></span>
     </div>
     <div class="report-body is-loading"><div class="empty">Loading…</div></div>`;
-  bindDateInputs(root);
+  const savePeriod = async (f, t) => {
+    const saved = { report_from: f, report_to: t };
+    try {
+      await api.put('/api/config', saved);
+    } catch (err) {
+      return toast(err.message, 'error');
+    }
+    Object.assign(store.state.config, saved);
+    renderReports(container);
+  };
+  rangePicker(root.querySelector('.period'), {
+    from, to, onApply: savePeriod, onReset: () => savePeriod('', ''),
+  });
 
   root.addEventListener('click', (e) => {
-    const preset = e.target.closest('[data-preset]');
-    if (preset) {
-      setPrefs('reports', { ...prefs, preset: preset.dataset.preset, open: [...open] });
-      renderReports(container);
-      return;
-    }
     const row = e.target.closest('[data-open]');
     if (row) toggle(row);
   });
@@ -117,16 +107,6 @@ export function renderReports(container) {
       toggle(row);
     }
   });
-  root.querySelector('form.range')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const f = readDate(e.target.querySelector('[name=from]'), 'From');
-    const t = readDate(e.target.querySelector('[name=to]'), 'To');
-    if (f === undefined || t === undefined) return;
-    if (f && t && f > t) return toast('The period starts after it ends', 'error');
-    setPrefs('reports', { ...prefs, from: f ?? '', to: t ?? '', open: [...open] });
-    renderReports(container);
-  });
-
   let report = null;
   function toggle(row) {
     const id = openKey(row.dataset.open);

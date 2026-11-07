@@ -93,6 +93,7 @@ class Seed(Base):
             self.assertEqual(upgraded.read(db.get_state, DAY)["recurring"][0]["is_variable"], False)
             self.assertIsNone(upgraded.conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE name = 'undo_log'").fetchone())  # migration 3 dropped it
+            self.assertEqual(upgraded.read(db.get_state, DAY)["config"]["report_from"], "")  # migration 4
         finally:
             upgraded.close()
 
@@ -440,6 +441,18 @@ class Currencies(Base):
     def test_missing_rates_are_reported(self):
         self.wallet("Card", currency="EUR", balance="5")
         self.assertEqual(self.state()["totals"]["missing_rates"], ["EUR"])
+
+    def test_report_period_is_kept(self):
+        self.assertEqual(self.state()["config"]["report_from"], "")  # empty: the current month
+        self.w(db.update_config, {"report_from": "2026-01-01", "report_to": "2026-03-31"})
+        cfg = self.state()["config"]
+        self.assertEqual((cfg["report_from"], cfg["report_to"]), ("2026-01-01", "2026-03-31"))
+        with self.assertRaises(ApiError):
+            self.w(db.update_config, {"report_from": "2026-04-01", "report_to": "2026-03-31"})
+        with self.assertRaises(ApiError):
+            self.w(db.update_config, {"report_from": "2026-02-30"})
+        self.w(db.update_config, {"report_from": "", "report_to": ""})
+        self.assertEqual(self.state()["config"]["report_to"], "")
 
     def test_cant_remove_used_currency(self):
         self.wallet("Card", currency="EUR")

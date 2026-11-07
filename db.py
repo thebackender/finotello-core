@@ -206,9 +206,14 @@ def migration_3(conn):
     conn.execute("DROP TABLE IF EXISTS undo_log")
 
 
+def migration_4(conn):
+    # The period of Overview's income and spending part, kept between visits. Empty: the current month.
+    conn.execute("INSERT INTO config (key, value) VALUES ('report_from', ''), ('report_to', '')")
+
+
 # Migrations by number: MIGRATIONS[n] brings the database from version n to n + 1 (PRAGMA user_version).
 # Add new ones at the end; never change one that has shipped.
-MIGRATIONS = [migration_1, migration_2, migration_3]
+MIGRATIONS = [migration_1, migration_2, migration_3, migration_4]
 VARIABLE_AVERAGE_OF = 3  # a varying monthly payment is expected to cost the average of this many last payments
 
 
@@ -1097,6 +1102,14 @@ def update_config(c, body):
         if target < 0:
             raise ApiError("Cushion target can't be below zero")
         c.update("config", "cushion_target", {"value": str(target)})
+    if "report_from" in body or "report_to" in body:
+        # Overview's income and spending period; an empty end means that end of the current month.
+        start = as_date(body.get("report_from", cfg["report_from"]) or None, "From", required=False) or ""
+        end = as_date(body.get("report_to", cfg["report_to"]) or None, "To", required=False) or ""
+        if start and end and start > end:
+            raise ApiError("The period starts after it ends")
+        c.update("config", "report_from", {"value": start})
+        c.update("config", "report_to", {"value": end})
     return {"ok": True}
 
 
@@ -1535,7 +1548,8 @@ def get_state(conn, day=None):
     totals["missing_rates"] = missing_rates
     return {
         "today": day, "month": day[:7],
-        "config": {"base_currency": base, "cushion_target": rates.fmt_base(target)},
+        "config": {"base_currency": base, "cushion_target": rates.fmt_base(target),
+                   "report_from": cfg["report_from"], "report_to": cfg["report_to"]},
         "currencies": currencies, "wallets": wallets, "categories": categories,
         "recurring": recurring, "planned": planned, "totals": totals,
         "limits": LIMITS,

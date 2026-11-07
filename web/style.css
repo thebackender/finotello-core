@@ -735,4 +735,32 @@ table.currencies td { vertical-align: middle; }
 /* Overview: the income and spending part below the cards */
 .report-part { margin-top: 28px; }
 .section-head h2 { margin: 0 8px 0 0; }
+
+/* Period picker: a button with the period, and two months of calendar under it. */
+.range-picker { position: relative; }
+.range-btn { gap: 8px; padding: 0 12px; }
+.range-btn[aria-expanded="true"] { background: var(--accent); }
+.range-pop {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 30;
+  width: max-content; max-width: calc(100vw - 32px); padding: 14px;
+  background: var(--background); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.rp-nav { position: absolute; left: 12px; right: 12px; top: 12px; display: flex; justify-content: space-between; pointer-events: none; }
+.rp-nav button { pointer-events: auto; width: 30px; height: 30px; padding: 0; }
+.rp-months { display: flex; flex-wrap: wrap; gap: 24px; }
+.rp-title { height: 30px; line-height: 30px; margin-bottom: 6px; text-align: center; font-weight: 600; }
+.rp-grid { display: grid; grid-template-columns: repeat(7, 36px); row-gap: 2px; }
+.rp-wd { height: 28px; display: grid; place-items: center; font-size: 12px; color: var(--muted-foreground); }
+.rp-day {
+  height: 34px; padding: 0; border: 0; border-radius: var(--radius-sm); box-shadow: none;
+  background: transparent; font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums;
+}
+.rp-day.today { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.rp-day.in { background: var(--muted); border-radius: 0; }
+.rp-day.edge, .rp-day.edge:hover { background: var(--primary); color: var(--primary-foreground); }
+.rp-day.lo { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.rp-day.hi { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.rp-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.range-pop .rp-foot input { width: 112px; height: 34px; }
+.rp-foot button { height: 34px; }
 .card-total { font-weight: 600; font-variant-numeric: tabular-nums; }
