@@ -19,6 +19,8 @@ const dialog = document.getElementById('dialog');
 // ---------- dialog frame ----------
 
 function openForm(html, { wide = false } = {}) {
+  const picker = document.getElementById('clr-picker');
+  if (picker && dialog.contains(picker)) document.body.append(picker); // the next line would wipe it
   dialog.innerHTML = `<form class="editor${wide ? '' : ' narrow'}" novalidate>${html}</form>`;
   const form = dialog.querySelector('form');
   bindDateInputs(form);
@@ -498,6 +500,41 @@ export function setupColorPicker() {
     swatches: [...PALETTE, OTHER_COLOR], closeButton: true, closeLabel: 'Done', margin: 6,
   });
   window.Coloris.wrap('.color-input'); // fields drawn after start-up need wrapping too
+  liftPickerAboveDialogs();
+}
+
+/** While a modal dialog is open, the browser ignores clicks on anything outside it, and draws the dialog above
+ *  the page. So when the picker (a child of body) opens, move it into the open dialog and show it as a popover
+ *  (the top layer, not clipped by the dialog); put it back in body when it closes. */
+function liftPickerAboveDialogs() {
+  const picker = document.getElementById('clr-picker');
+  if (!picker || picker.hasAttribute('popover') || !picker.showPopover) return;
+  picker.setAttribute('popover', 'manual');
+  new MutationObserver(() => {
+    const open = picker.classList.contains('clr-open');
+    if (open && !picker.matches(':popover-open')) {
+      const modal = [...document.querySelectorAll('dialog[open]')].at(-1);
+      if (modal && picker.parentElement !== modal) modal.append(picker);
+      picker.showPopover();
+    } else if (!open && picker.matches(':popover-open')) {
+      picker.hidePopover();
+      if (picker.parentElement !== document.body) document.body.append(picker);
+    }
+  }).observe(picker, { attributes: true, attributeFilter: ['class'] });
+  // A dialog closing (Save with Enter, say) takes the open picker with it.
+  document.addEventListener('close', (e) => {
+    if (e.target.contains(picker)) window.Coloris.close();
+  }, true);
+  // Esc closes the open picker only, not the dialog under it. Coloris closes the picker on the same key
+  // before the dialog hears it, so note whether it was open when the key went down.
+  let openOnEsc = false;
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') openOnEsc = picker.matches(':popover-open');
+  }, true);
+  document.addEventListener('cancel', (e) => {
+    if (openOnEsc) e.preventDefault();
+    openOnEsc = false;
+  }, true);
 }
 
 /** New or existing wallet; preset (new only): {type, currency}. A person (type "debt") is a wallet too. */
