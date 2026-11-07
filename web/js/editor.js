@@ -10,7 +10,7 @@ import { confirmDialog, promptDialog } from './dialogs.js';
 import {
   fmtMoney, symbolOf, decimalsOf, toMinor, fromMinor, cleanAmount, negate, convert, baseCurrency,
 } from './money.js';
-import { esc, opt, today, dateInput, bindDateInputs, readDate, toast, PALETTE, OTHER_COLOR, fmtDate } from './util.js';
+import { esc, opt, today, dateInput, bindDateInputs, readDate, toast, PALETTE, OTHER_COLOR, fmtDate, fmtTs } from './util.js';
 import { icon } from './icons.js';
 import { isDark } from './theme.js';
 
@@ -570,6 +570,42 @@ export function openWallet(w = null, preset = {}) {
     title: `Delete ${w?.name}?`,
     text: w?.has_transactions ? 'It has transactions, so it can only be archived.' : 'This can’t be undone.',
   }, () => act(() => api.del(`/api/wallets/${w.id}`), 'Deleted'));
+}
+
+// ---------- currency ----------
+
+/** Name and rate of a currency; Delete while nothing uses it. */
+export function openCurrency(c) {
+  const base = baseCurrency();
+  const isBase = c.code === base;
+  const form = openForm(`
+    ${header(`${c.code} — ${c.name}`)}
+    <label>Name <input name="name" value="${esc(c.name)}" ${maxlength('currency_name')}></label>
+    ${isBase ? '<p class="hint">The base currency: totals are counted in it, so its rate is always 1.</p>' : `
+      <label>Rate <span class="rate-field">1 ${esc(c.code)} =
+        <input name="rate" class="amount" inputmode="decimal" autocomplete="off" value="${Number(c.rate) ? esc(c.rate) : ''}" placeholder="not set"> ${esc(base)}</span></label>
+      <p class="hint">${c.rate_updated ? `Updated ${esc(fmtTs(c.rate_updated))}. ` : ''}All totals and reports are recounted at this rate.</p>`}
+    ${footer({ remove: !isBase && !c.used })}`);
+  const nameInput = form.querySelector('[name=name]');
+  const rateInput = form.querySelector('[name=rate]');
+  (rateInput ?? nameInput).focus();
+  (rateInput ?? nameInput).select();
+  onSubmit(form, async () => {
+    const payload = {};
+    if (nameInput.value.trim() !== c.name) payload.name = nameInput.value;
+    if (rateInput) {
+      const value = rateInput.value.trim() ? cleanAmount(rateInput.value) : '0';
+      if (value === null || value.startsWith('-')) {
+        rateInput.classList.add('invalid');
+        return toast('Enter the rate as a number', 'error');
+      }
+      if (Number(value) !== Number(c.rate)) payload.rate = value;
+    }
+    if (!Object.keys(payload).length) return true;
+    return act(() => api.put(`/api/currencies/${c.code}`, payload), payload.rate ? `1 ${c.code} = ${payload.rate} ${base}` : 'Saved');
+  });
+  onRemove(form, { title: `Remove ${c.code}?`, text: 'No wallet, payment or plan uses it. You can add it again later.', ok: 'Remove' },
+    () => act(() => api.del(`/api/currencies/${c.code}`), `Removed ${c.code}`));
 }
 
 // ---------- budget ----------

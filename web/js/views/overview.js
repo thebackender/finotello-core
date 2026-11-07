@@ -22,7 +22,7 @@ function welcome() {
     <h2>Welcome to Finotello</h2>
     <p class="muted">Add your wallets first: bank accounts, cash, crypto. Each one has its own currency.
       Then record what you spend and earn, and the totals here fill in.</p>
-    <div class="row-actions">
+    <div class="btn-row">
       <button class="primary" data-act="add-wallet">${icon('plus')} Add a wallet</button>
       <a class="button-link" href="#settings">Currencies and categories</a>
     </div>
@@ -49,7 +49,7 @@ export function render(view) {
       ${hasWallets ? '' : welcome()}
       <section class="card money">
         <div class="money-main">
-          <div class="tile-label">Money in your wallets ${eyeButton()}</div>
+          <div class="stat-label">Money in your wallets ${eyeButton()}</div>
           <div class="hero">${secret(esc(fmtBase(t.money)))}</div>
           ${hasDebts ? `<div class="debt-line">
             ${toNum(t.owed_to_me) ? `<span>They owe you <b>${secret(esc(fmtBase(t.owed_to_me)))}</b></span>` : ''}
@@ -70,11 +70,11 @@ export function render(view) {
 
       <div class="cards-3 four">
         <section class="card">
-          <header class="card-head"><h3>${icon('calendarCheck', 16, 'muted')} Monthly payments</h3><a href="#plans">All</a></header>
+          <header class="card-head"><h3>Monthly payments</h3><a href="#plans">All</a></header>
           <div class="figure-line"><b>${esc(fmtBase(t.monthly_required))}</b><span class="muted">a month</span></div>
           ${toNum(t.monthly_required) ? meter(toNum(t.monthly_paid), toNum(t.monthly_required), { label: 'Paid this month' }) : ''}
           <div class="muted small">Paid ${esc(fmtBase(t.monthly_paid))} · left ${esc(fmtBase(t.monthly_left))}</div>
-          ${unpaid.length ? `<ul class="mini-list">${unpaid.slice(0, 5).map((r) => `<li>
+          ${unpaid.length ? `<ul class="list compact">${unpaid.slice(0, 5).map((r) => `<li>
             <span class="day">${r.day}</span><span class="grow">${esc(r.name)}</span>
             <span class="num" ${r.is_variable ? 'title="Varies: what it usually costs"' : ''}>${r.is_variable ? '~' : ''}${esc(fmtBase(r.expected_base))}</span>
             <button type="button" class="small" data-pay="${r.id}">Pay</button></li>`).join('')}</ul>`
@@ -83,17 +83,17 @@ export function render(view) {
         </section>
 
         <section class="card">
-          <header class="card-head"><h3>${icon('bag', 16, 'muted')} Planned expenses</h3><a href="#plans">All</a></header>
+          <header class="card-head"><h3>Planned expenses</h3><a href="#plans">All</a></header>
           <div class="figure-line"><b>${esc(fmtBase(t.planned_total))}</b><span class="muted">in ${openPlans.length} plan${openPlans.length === 1 ? '' : 's'}</span></div>
           ${toNum(t.planned_total) ? meter(toNum(t.planned_saved), toNum(t.planned_total), { label: 'Saved for plans' }) : ''}
           <div class="muted small">Saved ${esc(fmtBase(t.planned_saved))} · missing ${esc(fmtBase(t.planned_missing))}</div>
-          ${openPlans.length ? `<ul class="mini-list">${openPlans.slice(0, 4).map((p) => `<li>
+          ${openPlans.length ? `<ul class="list compact">${openPlans.slice(0, 4).map((p) => `<li>
             <span class="grow">${esc(p.name)}</span><span class="num">${esc(fmtBase(p.amount_base))}</span></li>`).join('')}</ul>`
             : '<p class="muted small">Nothing planned. Add a purchase or a treatment you are saving for.</p>'}
         </section>
 
         <section class="card">
-          <header class="card-head"><h3>${icon('target', 16, 'muted')} Budgets</h3><a href="#plans">All</a></header>
+          <header class="card-head"><h3>Budgets</h3><a href="#plans">All</a></header>
           ${s.budgets.length ? `<div class="muted small">${esc(fmtMonth(month))}${overBudget ? ` · <span class="neg">${overBudget} over the limit</span>` : ''}</div>
             <ul class="budget-list">${s.budgets.slice(0, 4).map((b) => budgetRow(b)).join('')}</ul>
             ${s.budgets.length > 4 ? `<a class="muted small" href="#plans">${s.budgets.length - 4} more</a>` : ''}`
@@ -102,7 +102,7 @@ export function render(view) {
         </section>
 
         <section class="card">
-          <header class="card-head"><h3>${icon('shield', 16, 'muted')} Safety cushion</h3><a href="#plans">Details</a></header>
+          <header class="card-head"><h3>Safety cushion</h3><a href="#plans">Details</a></header>
           ${cushionTarget ? `
             <div class="figure-line"><b>${esc(fmtBase(t.cushion_saved))}</b><span class="muted">of ${esc(fmtBase(t.cushion_target))}</span></div>
             ${meter(cushionSaved, cushionTarget, { label: 'Cushion saved' })}

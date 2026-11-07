@@ -96,14 +96,14 @@ function row(tx) {
     ? `<ul class="tx-lines">${tx.entries.map((e) => `<li><span class="grow">${categoryLabel(e.category_id)}${e.description ? `<span class="desc">${esc(e.description)}</span>` : ''}</span>
         <span class="num">${esc(fmtMoney(e.amount.replace('-', ''), e.currency))}</span></li>`).join('')}</ul>`
     : '';
-  return `<li class="tx" data-tx="${tx.id}" tabindex="0" role="button">
-    <span class="tx-icon ${d.cls || tx.type}" title="${esc(TX_TYPE_NAMES[tx.type])}">${icon(TYPE_ICONS[tx.type])}</span>
-    <div class="tx-main">
-      <div class="tx-title">${d.title}</div>
-      <div class="tx-sub">${d.sub}</div>
+  return `<li class="row clickable" data-tx="${tx.id}" tabindex="0" role="button">
+    <span class="avatar ${d.cls || tx.type}" title="${esc(TX_TYPE_NAMES[tx.type])}">${icon(TYPE_ICONS[tx.type])}</span>
+    <div class="row-main">
+      <div class="row-title">${d.title}</div>
+      <div class="row-sub">${d.sub}</div>
       ${lines}
     </div>
-    <div class="tx-amount ${d.cls}"><span>${esc(fmtMoney(d.amount, d.currency, { sign }))}</span>${baseHint}</div>
+    <div class="row-value ${d.cls}"><span>${esc(fmtMoney(d.amount, d.currency, { sign }))}</span>${baseHint}</div>
   </li>`;
 }
 
@@ -196,11 +196,11 @@ export function render(view) {
     }
     list.innerHTML = [...days].map(([day, txs]) => {
       const t = totals(txs);
-      return `<section class="day-group">
+      return `<section class="card day-group">
         <h3><span>${esc(fmtDay(day))}</span><span class="spacer"></span>
           ${t.spent ? `<span class="muted">spent ${esc(fmtBaseNum(t.spent))}</span>` : ''}
           ${t.income ? `<span class="muted">income ${esc(fmtBaseNum(t.income))}</span>` : ''}</h3>
-        <ul>${txs.map(row).join('')}</ul>
+        <ul class="list">${txs.map(row).join('')}</ul>
       </section>`;
     }).join('');
     list.addEventListener('click', (e) => {

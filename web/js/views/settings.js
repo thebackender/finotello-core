@@ -1,7 +1,7 @@
 // Settings tab: base currency, currencies and their rates, categories, templates, theme, export.
 import * as api from '../api.js';
 import { store, act, categoryList, categoryById, maxlength } from '../store.js';
-import { setupColorPicker, templateSummary, TX_TYPE_NAMES } from '../editor.js';
+import { setupColorPicker, openCurrency, templateSummary, TX_TYPE_NAMES } from '../editor.js';
 import { ask, confirmDialog, promptDialog } from '../dialogs.js';
 import { cleanAmount, baseCurrency } from '../money.js';
 import { THEMES, setTheme } from '../theme.js';
@@ -25,14 +25,14 @@ function currencyRows() {
   const base = baseCurrency();
   return store.state.currencies.map((c) => `<tr data-code="${esc(c.code)}">
     <td><b>${esc(c.code)}</b></td>
-    <td><input class="cell-input" name="name" value="${esc(c.name)}" ${maxlength('currency_name')} aria-label="Name of ${esc(c.code)}"></td>
+    <td>${esc(c.name)}</td>
     <td class="muted">${c.kind}</td>
     <td class="muted num" title="Digits after the point">${c.decimals}</td>
     <td>${c.code === base ? '<span class="muted">base currency</span>'
-      : `<span class="rate-field">1 ${esc(c.code)} = <input class="cell-input amount ${Number(c.rate) ? '' : 'invalid-soft'}" name="rate" inputmode="decimal"
-          value="${Number(c.rate) ? esc(c.rate) : ''}" placeholder="not set" aria-label="Rate of ${esc(c.code)} in ${esc(base)}"> ${esc(base)}</span>`}</td>
+      : Number(c.rate) ? `<span class="muted">1 ${esc(c.code)} =</span> ${esc(c.rate)} <span class="muted">${esc(base)}</span>`
+        : '<span class="tag warn">rate not set</span>'}</td>
     <td class="muted small">${c.rate_updated && c.code !== base ? esc(fmtTs(c.rate_updated)) : ''}</td>
-    <td>${c.code === base || c.used ? '' : `<button type="button" class="icon" data-act="remove-currency" title="Remove ${esc(c.code)}" aria-label="Remove ${esc(c.code)}">${icon('trash')}</button>`}</td>
+    <td class="num"><button type="button" class="icon" data-act="edit-currency" title="Edit" aria-label="Edit ${esc(c.code)}">${icon('pencil')}</button></td>
   </tr>`).join('');
 }
 
@@ -64,14 +64,14 @@ function categoryRows(kind) {
   }).join('');
 }
 
-const categoryCard = (kind, title, hint) => `<section class="settings-card">
+const categoryCard = (kind, title, hint) => `<section class="card">
   <h2>${title}</h2>
   <p class="hint">${hint}</p>
   <form class="add-row" data-kind="${kind}">
     <input name="path" placeholder="${kind === 'expense' ? 'Food or Food:Fruits' : 'Salary or Freelance:Upwork'}" ${maxlength('category_name')}>
     <button type="submit">${icon('plus')} Add</button>
   </form>
-  <ul class="manage-list" data-kind="${kind}">${categoryRows(kind)}</ul>
+  <ul class="list manage-list" data-kind="${kind}">${categoryRows(kind)}</ul>
 </section>`;
 
 export function render(view) {
@@ -82,7 +82,7 @@ export function render(view) {
 
   root.innerHTML = `
     <div class="settings">
-      <section class="settings-card">
+      <section class="card">
         <h2>Currencies</h2>
         <p class="hint">Totals are counted in the <b>base currency</b>. Rates are yours to keep up to date: one unit of a currency costs this much of ${esc(base)}.
           A wallet's currency is set when you create it.</p>
@@ -111,22 +111,22 @@ export function render(view) {
         ${categoryCard('income', 'Income sources', 'Where money comes from: salary, freelance, gifts. Subcategories work the same way.')}
       </div>
 
-      <section class="settings-card">
+      <section class="card">
         <h2>Transaction templates</h2>
         <p class="hint">Made with “Save as template” in a transaction's dialog; they show at the top of New transaction.</p>
-        ${store.state.templates.length ? `<ul class="manage-list templates">${templateRows()}</ul>` : '<p class="muted small">No templates yet.</p>'}
+        ${store.state.templates.length ? `<ul class="list manage-list templates">${templateRows()}</ul>` : '<p class="muted small">No templates yet.</p>'}
       </section>
 
-      <section class="settings-card">
+      <section class="card">
         <h2>Appearance</h2>
         <div class="segmented">${Object.entries(THEMES).map(([value, label]) => `<button type="button" data-theme-choice="${value}" class="${theme === value ? 'on' : ''}">${label}</button>`).join('')}</div>
       </section>
 
-      <section class="settings-card">
+      <section class="card">
         <h2>Data</h2>
         <p class="hint">Everything lives in <code>data/finance.db</code> (SQLite). Before the first change of each day a copy goes to
           <code>${esc(store.lastBackup?.dir ?? 'data/backups')}</code>; the archive button at the top makes one right away.</p>
-        <div class="row-actions">
+        <div class="btn-row">
           <a class="button-link" href="/api/export.csv" download>${icon('download', 14)} Transactions as CSV</a>
           <a class="button-link" href="/api/export.json" download>${icon('download', 14)} Everything as JSON</a>
         </div>
@@ -169,30 +169,6 @@ export function render(view) {
     }
     if (answer !== 'ok' || !(await act(() => api.put('/api/config', body), `Totals are now in ${code}`))) e.target.value = base;
   });
-  const saveCell = async (input) => {
-    const code = input.closest('[data-code]').dataset.code;
-    const currency = s.currencies.find((c) => c.code === code);
-    if (input.name === 'rate') {
-      const value = input.value.trim() ? cleanAmount(input.value) : '0';
-      if (value === null || value.startsWith('-')) {
-        input.classList.add('invalid');
-        return;
-      }
-      if (Number(value) === Number(currency.rate)) return;
-      await act(() => api.put(`/api/currencies/${code}`, { rate: value }), `1 ${code} = ${value} ${base}`);
-    } else if (input.value.trim() !== currency.name) {
-      await act(() => api.put(`/api/currencies/${code}`, { name: input.value }), 'Saved');
-    }
-  };
-  root.querySelectorAll('.currencies .cell-input').forEach((input) => {
-    input.addEventListener('change', () => saveCell(input));
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        input.blur();
-      }
-    });
-  });
   root.querySelector('.add-currency form').addEventListener('submit', (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
@@ -224,10 +200,7 @@ export function render(view) {
     const themeBtn = e.target.closest('[data-theme-choice]');
     if (themeBtn) return setTheme(themeBtn.dataset.themeChoice);
     const btn = e.target.closest('button[data-act]');
-    if (btn?.dataset.act === 'remove-currency') {
-      const code = btn.closest('[data-code]').dataset.code;
-      return act(() => api.del(`/api/currencies/${code}`), `Removed ${code}`);
-    }
+    if (btn?.dataset.act === 'edit-currency') return openCurrency(s.currencies.find((c) => c.code === btn.closest('[data-code]').dataset.code));
     const tli = btn?.closest('[data-template]');
     if (tli) {
       const t = s.templates.find((x) => x.id === Number(tli.dataset.template));

@@ -39,14 +39,14 @@ function recurringAmount(r) {
 
 function recurringRow(r, month) {
   const w = r.wallet_id ? walletById(r.wallet_id) : null;
-  return `<li class="plan-row ${r.is_active ? '' : 'inactive'}" data-recurring="${r.id}">
-    <span class="day-badge" title="Day of the month">${ordinal(r.day)}</span>
-    <div class="grow">
-      <div class="plan-name">${esc(r.name)}</div>
-      <div class="plan-meta">${categoryTag(r.category_id)}${w ? `<span class="muted">from ${esc(w.name)}</span>` : ''}</div>
+  return `<li class="row ${r.is_active ? '' : 'inactive'}" data-recurring="${r.id}">
+    <span class="avatar day" title="Paid on the ${ordinal(r.day)}">${r.day}</span>
+    <div class="row-main">
+      <div class="row-title">${esc(r.name)}</div>
+      <div class="row-sub">${categoryTag(r.category_id)}${w ? `<span>from ${esc(w.name)}</span>` : ''}</div>
     </div>
-    <div class="plan-amount">${recurringAmount(r)}</div>
-    <div class="plan-actions">
+    <div class="row-value">${recurringAmount(r)}</div>
+    <div class="row-actions">
       ${!r.is_active ? '<span class="muted small">paused</span>'
         : r.paid_tx_id ? `<button type="button" class="ghost paid" data-act="open-paid" title="Paid ${esc(fmtDate(r.paid_date))}: open the payment">${icon('check', 14)} Paid ${esc(fmtDate(r.paid_date).slice(0, 5))}</button>`
           : `<button type="button" data-act="pay" title="Record the payment for ${esc(fmtMonth(month))}">Pay</button>`}
@@ -59,19 +59,19 @@ function plannedRow(p) {
   const saved = toNum(p.saved);
   const amount = toNum(p.amount);
   const overdue = p.due && p.due < store.state.today;
-  return `<li class="plan-row" data-planned="${p.id}">
-    <span class="prio ${p.priority}" title="Priority: ${PRIORITY_NAMES[p.priority]}">${PRIORITY_NAMES[p.priority]}</span>
-    <div class="grow">
-      <div class="plan-name">${esc(p.name)}</div>
-      <div class="plan-meta">${categoryTag(p.category_id)}${p.due ? `<span class="${overdue ? 'neg' : 'muted'}">by ${esc(fmtDate(p.due))}</span>` : ''}
+  return `<li class="row" data-planned="${p.id}">
+    <span class="avatar">${icon('bag')}</span>
+    <div class="row-main">
+      <div class="row-title">${esc(p.name)}</div>
+      <div class="row-sub"><span class="tag prio ${p.priority}" title="Priority">${PRIORITY_NAMES[p.priority]}</span>${categoryTag(p.category_id)}${p.due ? `<span class="${overdue ? 'neg' : 'muted'}">by ${esc(fmtDate(p.due))}</span>` : ''}
         ${p.notes ? `<span class="muted notes" title="${esc(p.notes)}">${icon('info', 12)} notes</span>` : ''}</div>
       <div class="saving">
         ${meter(saved, amount, { label: `Saved for ${p.name}` })}
         <span class="muted small">${saved ? `${esc(fmtMoney(p.saved, p.currency))} saved · ${Math.min(100, Math.round((saved / amount) * 100))}%` : 'nothing saved yet'}</span>
       </div>
     </div>
-    <div class="plan-amount"><b>${esc(fmtMoney(p.amount, p.currency))}</b>${inBase(p.amount, p.currency, p.amount_base)}</div>
-    <div class="plan-actions">
+    <div class="row-value"><b>${esc(fmtMoney(p.amount, p.currency))}</b>${inBase(p.amount, p.currency, p.amount_base)}</div>
+    <div class="row-actions">
       <button type="button" data-act="save" title="Put money aside for it, or take some back">${icon('piggy', 14)} Save</button>
       <button type="button" data-act="buy" title="Record the purchase">Bought</button>
       <button type="button" class="icon" data-act="edit-planned" title="Edit" aria-label="Edit ${esc(p.name)}">${icon('pencil')}</button>
@@ -97,60 +97,60 @@ export function render(view) {
     <div class="plans">
       <section class="card">
         <header class="card-head">
-          <h2>${icon('calendarCheck', 18, 'muted')} Monthly payments</h2>
+          <h2>Monthly payments</h2>
           <span class="spacer"></span>
           <button type="button" data-act="add-recurring">${icon('plus')} Add</button>
         </header>
-        <div class="summary-line">
+        <div class="figure-line">
           <span><b>${esc(fmtBase(t.monthly_required))}</b> a month</span>
           <span class="muted">${esc(fmtMonth(s.month))}: paid ${esc(fmtBase(t.monthly_paid))} · left ${esc(fmtBase(t.monthly_left))}</span>
         </div>
         ${active.length ? meter(toNum(t.monthly_paid), toNum(t.monthly_required), { label: 'Paid this month' }) : ''}
-        ${s.recurring.length ? `<ul class="plan-list">${active.map((r) => recurringRow(r, s.month)).join('')}</ul>
+        ${s.recurring.length ? `<ul class="list">${active.map((r) => recurringRow(r, s.month)).join('')}</ul>
           ${paused.length ? `<details class="closed"><summary>Paused <span class="muted">(${paused.length})</span></summary>
-            <ul class="plan-list">${paused.map((r) => recurringRow(r, s.month)).join('')}</ul></details>` : ''}`
+            <ul class="list">${paused.map((r) => recurringRow(r, s.month)).join('')}</ul></details>` : ''}`
           : '<p class="muted">Rent, utilities, subscriptions, loan payments: everything you must pay every month. Their sum shows what a month costs you at least.</p>'}
       </section>
 
       <section class="card">
         <header class="card-head">
-          <h2>${icon('target', 18, 'muted')} Budgets</h2>
+          <h2>Budgets</h2>
           <span class="spacer"></span>
           <button type="button" data-act="add-budget">${icon('plus')} Add</button>
         </header>
         ${s.budgets.length ? `
-          <div class="summary-line"><span class="muted">${esc(fmtMonth(s.month))}: ${overBudget ? `${overBudget} over the limit` : 'all within the limits'}</span></div>
+          <div class="figure-line"><span class="muted">${esc(fmtMonth(s.month))}: ${overBudget ? `${overBudget} over the limit` : 'all within the limits'}</span></div>
           <ul class="budget-list">${s.budgets.map((b) => budgetRow(b, { edit: true })).join('')}</ul>`
           : '<p class="muted">A monthly limit for a category (food, eating out, shopping) shows how much is left this month. Subcategories count toward their category.</p>'}
       </section>
 
       <section class="card">
         <header class="card-head">
-          <h2>${icon('bag', 18, 'muted')} Planned expenses</h2>
+          <h2>Planned expenses</h2>
           <span class="spacer"></span>
           <button type="button" data-act="add-planned">${icon('plus')} Add</button>
         </header>
         ${open.length ? `
-          <div class="summary-line">
+          <div class="figure-line">
             <span><b>${esc(fmtBase(t.planned_total))}</b> in total</span>
             <span class="muted">saved ${esc(fmtBase(t.planned_saved))} · missing ${esc(fmtBase(t.planned_missing))}</span>
           </div>
           ${missing <= 0 ? `<p class="hint">${icon('check', 14)} Everything is saved for.</p>` : ''}
-          <ul class="plan-list">${open.map(plannedRow).join('')}</ul>`
+          <ul class="list">${open.map(plannedRow).join('')}</ul>`
           : '<p class="muted">A new laptop, dental treatment, a trip: what you will spend on. See the total, and put money aside for each.</p>'}
         ${closed.length ? `<details class="closed"><summary>Bought and dropped <span class="muted">(${closed.length})</span></summary>
-          <ul class="plan-list">${closed.map((p) => `<li class="plan-row inactive" data-planned="${p.id}">
-            <span class="status-tag">${p.status === 'done' ? `${icon('check', 12)} Bought` : 'Dropped'}</span>
-            <div class="grow"><div class="plan-name">${esc(p.name)}</div><div class="plan-meta muted">${esc(fmtDate(p.done_at))}</div></div>
-            <div class="plan-amount">${esc(fmtMoney(p.amount, p.currency))}</div>
-            <div class="plan-actions">
+          <ul class="list">${closed.map((p) => `<li class="row inactive" data-planned="${p.id}">
+            <span class="avatar">${icon(p.status === 'done' ? 'check' : 'x')}</span>
+            <div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${p.status === 'done' ? 'Bought' : 'Dropped'} ${esc(fmtDate(p.done_at))}</div></div>
+            <div class="row-value">${esc(fmtMoney(p.amount, p.currency))}</div>
+            <div class="row-actions">
               ${p.purchase_tx_id ? `<button type="button" class="ghost" data-act="open-purchase">Purchase</button>` : ''}
               <button type="button" class="icon" data-act="edit-planned" title="Edit or open again" aria-label="Edit ${esc(p.name)}">${icon('pencil')}</button>
             </div></li>`).join('')}</ul></details>` : ''}
       </section>
 
       <section class="card cushion">
-        <header class="card-head"><h2>${icon('shield', 18, 'muted')} Safety cushion</h2></header>
+        <header class="card-head"><h2>Safety cushion</h2></header>
         <form class="cushion-target">
           <label>Target
             <span class="amount-field"><input name="target" class="amount" inputmode="decimal" value="${toNum(t.cushion_target) ? esc(s.config.cushion_target) : ''}" placeholder="0.00"><span class="cur">${esc(symbolOf(baseCurrency()))}</span></span>
@@ -159,7 +159,7 @@ export function render(view) {
           ${t.monthly_required && toNum(t.monthly_required) ? `<span class="muted small">Common advice: 3–6 months of payments, here ${esc(fmtBaseNum(toNum(t.monthly_required) * 3))} – ${esc(fmtBaseNum(toNum(t.monthly_required) * 6))}</span>` : ''}
         </form>
         ${toNum(t.cushion_target) ? `
-          <div class="summary-line">
+          <div class="figure-line">
             <span><b>${esc(fmtBase(t.cushion_saved))}</b> of ${esc(fmtBase(t.cushion_target))}</span>
             <span class="muted">${toNum(t.cushion_left) ? `left to save <b class="fg">${esc(fmtBase(t.cushion_left))}</b>` : 'target reached'}
               ${t.months_covered != null ? ` · covers ${t.months_covered} month${t.months_covered === 1 ? '' : 's'} of payments` : ''}</span>
