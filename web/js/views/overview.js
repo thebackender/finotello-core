@@ -6,7 +6,7 @@ import { fmtBase, toNum } from '../money.js';
 import { meter, segmentedBar } from '../chart.js';
 import { esc, freshBox, fmtMonth, paint, PALETTE } from '../util.js';
 import { icon, WALLET_ICONS } from '../icons.js';
-import { missingRatesBanner, budgetRow } from './parts.js';
+import { missingRatesBanner, budgetRow, afterPayments } from './parts.js';
 import { renderReports } from './reports.js';
 import { secret, eyeButton } from '../privacy.js';
 
@@ -80,6 +80,7 @@ export function render(view) {
             <button type="button" class="small" data-pay="${r.id}">Pay</button></li>`).join('')}</ul>`
             : s.recurring.length ? `<p class="ok-line">${icon('check', 14)} All paid for ${fmtMonth(month)}</p>`
               : '<p class="muted small">No monthly payments yet. Add rent, subscriptions, loans in Plans.</p>'}
+          ${afterPayments()}
         </section>
 
         <section class="card">

@@ -296,7 +296,7 @@ class Categories(Base):
         groceries2 = next(c for c in state["categories"] if c["path"] == "Groceries2")["id"]
         food = next(c for c in state["categories"] if c["path"] == "Food")["id"]
         self.w(db.merge_category, groceries2, {"into": food})
-        lines = self.db.read(db.list_transactions, {})["transactions"][0]["entries"]
+        lines = next(t for t in self.db.read(db.list_transactions, {})["transactions"] if t["type"] == "expense")["entries"]
         meat = next(c for c in self.state()["categories"] if c["path"] == "Food:Meat")
         self.assertEqual(sorted(e["category_id"] for e in lines), sorted([food_fruits, meat["id"]]))
 

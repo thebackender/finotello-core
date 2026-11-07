@@ -9,7 +9,7 @@ import { fmtMoney, fmtBase, fmtBaseNum, toNum, symbolOf, cleanAmount, baseCurren
 import { meter } from '../chart.js';
 import { esc, freshBox, fmtDate, fmtMonth, paint, toast } from '../util.js';
 import { icon } from '../icons.js';
-import { missingRatesBanner, budgetRow } from './parts.js';
+import { missingRatesBanner, budgetRow, afterPayments } from './parts.js';
 
 const categoryTag = (id) => {
   const c = id != null ? categoryById(id) : null;
@@ -98,6 +98,7 @@ export function render(view) {
           <span class="muted">${esc(fmtMonth(s.month))}: paid ${esc(fmtBase(t.monthly_paid))} · left ${esc(fmtBase(t.monthly_left))}</span>
         </div>
         ${active.length ? meter(toNum(t.monthly_paid), toNum(t.monthly_required), { label: 'Paid this month' }) : ''}
+        ${afterPayments()}
         ${s.recurring.length ? `<ul class="list">${active.map((r) => recurringRow(r, s.month)).join('')}</ul>
           ${paused.length ? `<details class="closed"><summary>Paused <span class="muted">(${paused.length})</span></summary>
             <ul class="list">${paused.map((r) => recurringRow(r, s.month)).join('')}</ul></details>` : ''}`

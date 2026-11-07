@@ -600,6 +600,15 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
 
 /* ====================================================================== plans */
 
+.after-pay { margin-top: 12px; }
+.after-pay [data-after-payments][aria-expanded="true"] { background: var(--field-hover); }
+.after-pay-body { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-field); background: var(--field); font-size: 13px; }
+.after-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; font-variant-numeric: tabular-nums; }
+.after-sum b.fg, .after-wallets b.fg { color: var(--foreground); }
+.after-wallets { margin-top: 8px; }
+.after-wallets li { gap: 10px; }
+.after-wallets .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
 .plans { display: flex; flex-direction: column; gap: 16px; }
 .plans .card + .card { margin-top: 0; }
 .notes { display: inline-flex; align-items: center; gap: 3px; cursor: help; }
