@@ -54,7 +54,6 @@ in that wallet's currency, and may have a category and a description. A wallet's
 
 **Debts.** Every person is a wallet of type "debt". Its balance above zero means they owe you, below zero means you owe them.
 Lending 10 000 is a debt transaction `card −10 000, Ivan +10 000`; when Ivan pays back 4 000, `Ivan −4 000, card +4 000`.
-If a friend pays for your lunch, record an expense from the friend: it counts as spending, and your debt to them grows.
 
 **Categories** go two levels deep: `Category` or `Category:Subcategory`. Type `Food:Snacks` in a category field and
 "+ Create" makes whatever is missing. Reports count a category together with its subcategories.

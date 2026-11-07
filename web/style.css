@@ -190,13 +190,20 @@ label.check { display: inline-flex; align-items: center; gap: 8px; cursor: point
 .amount-field input { width: 100%; padding-right: 44px; font-variant-numeric: tabular-nums; }
 .amount-field .cur { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--muted-foreground); font-size: 13px; pointer-events: none; }
 
-.date-field { position: relative; display: flex; align-items: center; gap: 4px; }
-.date-field input:not(.date-picker) { flex: 1; min-width: 0; }
+/* Date: the calendar button sits inside the field, so a date field is as wide as any other. */
+.date-field { position: relative; display: flex; align-items: center; }
+.date-field input:not(.date-picker) { flex: 1; min-width: 0; padding-right: 42px; }
+.date-field .date-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
 .date-picker { position: absolute; right: 0; bottom: 0; width: 1px !important; height: 1px !important; padding: 0 !important; border: 0 !important; opacity: 0; pointer-events: none; }
 
 /* Searchable dropdown (combo.js) and icon picker. */
 .combo { position: relative; }
-.combo-input { width: 100%; }
+/* A combo is a select you can type in: it wears the select's arrows, so it doesn't pass for a plain text field. */
+.combo-input {
+  width: 100%; padding-right: 36px !important; cursor: pointer;
+  background-image: var(--select-arrows) !important; background-repeat: no-repeat !important; background-position: right 12px center !important;
+}
+.combo-input:focus { cursor: text; }
 .picker { position: relative; }
 .picker-btn {
   width: 100%; justify-content: flex-start; gap: 8px; height: 40px; padding: 0 36px 0 14px; border-radius: var(--r-field);
@@ -426,6 +433,8 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
 .editor header h2 { flex: 1; font-size: 20px; font-weight: 650; letter-spacing: -0.015em; }
 .editor header button.icon { margin: -6px -8px 0 0; }
 .editor footer { position: sticky; bottom: 0; padding: 16px 0 24px; background: var(--card); }
+/* A ghost button first in the row: its text lines up with the fields above, not its invisible edge. */
+.editor footer > button.ghost:first-child { margin-left: -16px; }
 .editor label:not(.check), .editor .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: var(--foreground-2); }
 .editor label input, .editor label select, .editor .field select, .editor .field input { font-weight: 400; color: var(--foreground); }
 .editor .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
@@ -458,15 +467,18 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
 .lines { display: flex; flex-direction: column; gap: 8px; }
 .line { display: grid; grid-template-columns: 150px minmax(0, 1.2fr) minmax(0, 1fr) 32px; gap: 8px; align-items: center; }
 .line input { width: 100%; min-width: 0; }
-.lines.single [data-remove-line] { visibility: hidden; }
+/* One line: no remove button and no room kept for it, so the fields end where the ones above do. */
+.lines.single .line { grid-template-columns: 150px minmax(0, 1.2fr) minmax(0, 1fr); }
+.lines.single [data-remove-line] { display: none; }
 .lines-foot { display: flex; align-items: center; gap: 8px; }
-.lines-foot button { height: 30px; padding: 0 10px; font-size: 13px; color: var(--muted-foreground); }
+.lines-foot button { height: 30px; margin-left: -10px; padding: 0 10px; font-size: 13px; color: var(--muted-foreground); }
 .lines-total { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* Templates: a quiet field in the dialog's title row */
 .template-pick { position: relative; width: 150px; margin-right: 4px; }
 .template-pick > .i { position: absolute; left: 10px; top: 9px; z-index: 1; pointer-events: none; }
 .template-pick .combo-input { height: 32px !important; padding-left: 30px !important; font-size: 13px !important; border-radius: 999px !important; background-color: transparent !important; color: var(--muted-foreground); }
+.template-pick .combo-input { background-image: none !important; padding-right: 12px !important; }
 .template-pick .combo-input:hover { background-color: var(--field) !important; }
 .template-pick .combo-input:focus { background-color: var(--card) !important; color: var(--foreground); }
 .template-pick .combo-list { left: auto; right: 0; width: 340px; font-size: 13px; }
@@ -665,6 +677,8 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
   .line { grid-template-columns: 1fr 1fr 32px; }
   .line .line-cat { grid-column: 2 / 4; }
   .line input[name="description"] { grid-column: 1 / 3; }
+  .lines.single .line { grid-template-columns: 1fr 1fr; }
+  .lines.single .line .line-cat { grid-column: 2 / 3; }
   .row { flex-wrap: wrap; }
   .hero { font-size: 34px; }
 }

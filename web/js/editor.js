@@ -237,8 +237,7 @@ export function openTransaction(tx = null, preset = {}) {
       const currency = currencyOfWallet(m.wallet_id);
       body.innerHTML = `
         <div class="field">${m.type === 'expense' ? 'Paid from' : 'Received to'}
-          ${walletCombo('wallet_id', m.wallet_id, { withPeople: m.type === 'expense' })}
-          ${m.type === 'expense' ? '<span class="field-hint">Pick a person if they paid for you: your debt to them grows.</span>' : ''}
+          ${walletCombo('wallet_id', m.wallet_id)}
         </div>
         <div class="field">Lines
           <div class="lines">${m.lines.map((l) => lineHTML(l, m.type, currency)).join('')}</div>
