@@ -100,6 +100,7 @@ class Seed(Base):
                 "SELECT 1 FROM sqlite_master WHERE name = 'undo_log'").fetchone())  # migration 3 dropped it
             self.assertEqual(upgraded.read(db.get_state, DAY)["config"]["report_from"], "")  # migration 4
             self.assertEqual(upgraded.read(db.get_state, DAY)["templates"], [])  # migration 5
+            self.assertEqual(upgraded.read(db.get_state, DAY)["config"]["cushion_currency"], "USD")  # migration 7
             self.assertIsNone(upgraded.conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE name = 'plan_savings'").fetchone())  # migration 6 dropped it
         finally:
@@ -419,7 +420,30 @@ class Currencies(Base):
         self.assertEqual(rates["EUR"], "1")
         self.assertEqual(rates["USD"], "0.8")
         self.assertEqual(rates["BTC"], "80000")
-        self.assertEqual(self.state()["config"]["cushion_target"], "800.00")
+        config = self.state()["config"]
+        # the cushion keeps its own currency, so it isn't recounted
+        self.assertEqual((config["cushion_target"], config["cushion_currency"]), ("1000.00", "USD"))
+        self.assertEqual(self.state()["totals"]["cushion_target"], "800.00")  # in the new base
+
+    def test_cushion_in_its_own_currency(self):
+        self.set_rate("EUR", "1.25")
+        reserve = self.wallet("Reserve", is_cushion=True, balance="500")  # USD, the base
+        self.w(db.update_config, {"cushion_target": "1000", "cushion_currency": "EUR"})
+        state = self.state()
+        self.assertEqual((state["config"]["cushion_target"], state["config"]["cushion_currency"]), ("1000.00", "EUR"))
+        self.assertEqual(state["totals"]["cushion"], {"currency": "EUR", "target": "1000.00", "saved": "400.00", "left": "600.00"})
+        self.assertEqual(state["totals"]["cushion_target"], "1250.00")  # in the base, for the bar
+        # a new currency alone keeps the target's value
+        self.w(db.update_config, {"cushion_currency": "USD"})
+        self.assertEqual(self.state()["config"]["cushion_target"], "1250.00")
+        self.w(db.update_config, {"cushion_currency": "EUR"})
+        with self.assertRaises(ApiError):  # the cushion's currency is in use
+            self.w(db.delete_currency, "EUR")
+        self.w(db.update_currency, "EUR", {"rate": "0"})
+        self.assertIn("EUR", self.state()["totals"]["missing_rates"])
+        with self.assertRaises(ApiError):
+            self.w(db.update_config, {"cushion_target": "-5"})
+        self.assertEqual(self.balance(reserve), "500.00")
 
     def test_switch_base_on_fresh_database(self):
         # No rates set yet: nothing to recount, so it just switches.

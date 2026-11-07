@@ -140,12 +140,12 @@ export function render(view) {
     const rate = Number(s.currencies.find((c) => c.code === code)?.rate);
     const othersSet = s.currencies.some((c) => c.code !== base && c.code !== code && Number(c.rate));
     // Without a rate for the new base, the others can only be recounted if you give one now.
-    const needRate = !rate && (othersSet || Number(s.config.cushion_target));
+    const needRate = !rate && (othersSet || s.budgets.length > 0);
     const pending = ask({
       title: `Count everything in ${code}?`,
       text: needRate
         ? `The other rates are recounted through ${code}, so enter what 1 ${code} costs in ${base}. Balances don't change.`
-        : rate ? `All rates are recounted through the rate of ${code} (1 ${code} = ${s.currencies.find((c) => c.code === code).rate} ${base}), and the cushion target is converted. Balances don't change.`
+        : rate ? `All rates are recounted through the rate of ${code} (1 ${code} = ${s.currencies.find((c) => c.code === code).rate} ${base}), and budgets keep their value. Balances and the cushion (it has its own currency) don't change.`
           : `No other rates are set yet, so nothing is recounted. Set the rates in ${code} after switching.`,
       body: needRate ? `<span class="rate-field dialog-rate">1 ${esc(code)} = <input class="dialog-input" id="base-rate" inputmode="decimal" placeholder="0.00"> ${esc(base)}</span>` : '',
       buttons: [{ spacer: true }, { value: 'cancel', label: 'Cancel' }, { value: 'ok', label: `Switch to ${code}`, kind: 'primary', focus: !needRate }],

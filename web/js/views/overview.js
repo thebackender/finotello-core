@@ -2,7 +2,7 @@
 // then income and spending for a period (views/reports.js).
 import { store } from '../store.js';
 import { openWallet, openPay } from '../editor.js';
-import { fmtBase, toNum } from '../money.js';
+import { fmtBase, fmtMoney, toNum, baseCurrency } from '../money.js';
 import { meter, segmentedBar } from '../chart.js';
 import { esc, freshBox, fmtMonth, paint, PALETTE } from '../util.js';
 import { icon, WALLET_ICONS } from '../icons.js';
@@ -103,9 +103,9 @@ export function render(view) {
         <section class="card">
           <header class="card-head"><h3>Safety cushion</h3><a href="#plans">Details</a></header>
           ${cushionTarget ? `
-            <div class="figure-line"><b>${esc(fmtBase(t.cushion_saved))}</b><span class="muted">of ${esc(fmtBase(t.cushion_target))}</span></div>
+            <div class="figure-line"><b>${esc(fmtMoney(t.cushion.saved, t.cushion.currency))}</b><span class="muted">of ${esc(fmtMoney(t.cushion.target, t.cushion.currency))}</span></div>
             ${meter(cushionSaved, cushionTarget, { label: 'Cushion saved' })}
-            <div class="muted small">${toNum(t.cushion_left) ? `Left to save <b class="fg">${esc(fmtBase(t.cushion_left))}</b>` : `${icon('check', 14)} Target reached`}
+            <div class="muted small">${toNum(t.cushion.left) ? `Left to save <b class="fg">${esc(fmtMoney(t.cushion.left, t.cushion.currency))}</b>` : `${icon('check', 14)} Target reached`}${t.cushion.currency !== baseCurrency() ? ` · ≈ ${esc(fmtBase(t.cushion_saved))} saved` : ''}
               ${t.months_covered != null ? ` · covers ${t.months_covered} month${t.months_covered === 1 ? '' : 's'} of payments` : ''}</div>
             <p class="muted small">${t.cushion_wallets ? 'Counted from wallets marked for the cushion.' : 'No wallet is marked for the cushion, so all your money counts.'}</p>`
           : `<p class="muted small">Set how much you want to keep for a rainy day, and see how much is left to save.</p>

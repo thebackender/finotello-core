@@ -201,9 +201,15 @@ def migration_6(conn):
     conn.execute("DROP TABLE IF EXISTS plan_savings")
 
 
+def migration_7(conn):
+    # The cushion target gets its own currency (it was always in the base currency): keep it as it was.
+    conn.execute("""INSERT INTO config (key, value)
+                    SELECT 'cushion_currency', value FROM config WHERE key = 'base_currency'""")
+
+
 # Migrations by number: MIGRATIONS[n] brings the database from version n to n + 1 (PRAGMA user_version).
 # Add new ones at the end; never change one that has shipped.
-MIGRATIONS = [migration_1, migration_2, migration_3, migration_4, migration_5, migration_6]
+MIGRATIONS = [migration_1, migration_2, migration_3, migration_4, migration_5, migration_6, migration_7]
 VARIABLE_AVERAGE_OF = 3  # a varying monthly payment is expected to cost the average of this many last payments
 
 
@@ -1009,7 +1015,7 @@ def currency_used(conn, code):
     for table in ("wallets", "recurring", "planned"):
         if conn.execute(f"SELECT 1 FROM {table} WHERE currency = ? LIMIT 1", (code,)).fetchone():
             return True
-    return False
+    return config(conn)["cushion_currency"] == code
 
 
 def create_currency(c, body):
@@ -1051,7 +1057,7 @@ def delete_currency(c, code):
     if code == config(c.conn)["base_currency"]:
         raise ApiError("The base currency can't be removed")
     if currency_used(c.conn, code):
-        raise ApiError("This currency is in use (a wallet, payment or plan has it)")
+        raise ApiError("This currency is in use (a wallet, payment, plan or the safety cushion has it)")
     c.delete("currencies", code)
     return {"ok": True}
 
@@ -1066,7 +1072,7 @@ def update_config(c, body):
         rows = c.conn.execute("SELECT code, rate FROM currencies").fetchall()
         others_set = any(Decimal(r["rate"]) for r in rows if r["code"] not in (base, new["code"]))
         has_budgets = c.conn.execute("SELECT 1 FROM categories WHERE budget IS NOT NULL").fetchone()
-        if not factor and (others_set or int(cfg["cushion_target"]) or has_budgets):
+        if not factor and (others_set or has_budgets):
             raise ApiError(f"Enter how much 1 {new['code']} costs in {base}: the other rates are recounted through it")
         old_decimals = get_currency(c.conn, base)["decimals"]
         with localcontext() as ctx:
@@ -1087,16 +1093,24 @@ def update_config(c, body):
                     return 0
                 value = (Decimal(minor).scaleb(-old_decimals) / factor).scaleb(new["decimals"])
                 return int(value.to_integral_value(rounding=ROUND_HALF_UP))
-            c.update("config", "cushion_target", {"value": str(recount(int(cfg["cushion_target"])))})
             for row in c.conn.execute("SELECT id, budget FROM categories WHERE budget IS NOT NULL").fetchall():
                 c.update("categories", row["id"], {"budget": recount(row["budget"]) or None})
         c.update("config", "base_currency", {"value": new["code"]})
         base = new["code"]
-    if "cushion_target" in body:
-        target = to_minor(body["cushion_target"] or "0", get_currency(c.conn, base)["decimals"], "Cushion target")
+    if "cushion_currency" in body or "cushion_target" in body:
+        # The target is kept in minor units of its own currency. A new currency without a new target:
+        # the old target keeps its value, converted at your rates.
+        old = get_currency(c.conn, cfg["cushion_currency"])
+        new = get_currency(c.conn, as_code(body.get("cushion_currency") or old["code"]))
+        if "cushion_target" in body:
+            target = to_minor(body["cushion_target"] or "0", new["decimals"], "Cushion target")
+        else:
+            rates = Rates(c.conn)
+            target = rates.from_base(rates.to_base(int(cfg["cushion_target"]), old["code"]), new["code"])
         if target < 0:
             raise ApiError("Cushion target can't be below zero")
         c.update("config", "cushion_target", {"value": str(target)})
+        c.update("config", "cushion_currency", {"value": new["code"]})
     if "report_from" in body or "report_to" in body:
         # Overview's income and spending period; an empty end means that end of the current month.
         start = as_date(body.get("report_from", cfg["report_from"]) or None, "From", required=False) or ""
@@ -1558,11 +1572,16 @@ def get_state(conn, day=None):
     templates = [{"id": r["id"], "name": r["name"], "type": r["type"], "data": json.loads(r["data"])}
                  for r in conn.execute("SELECT * FROM templates ORDER BY name COLLATE NOCASE, id")]
 
-    target = int(cfg["cushion_target"])
+    # The cushion's target is in its own currency; what is saved is counted in the base currency, then shown in it.
+    cushion_currency = cfg["cushion_currency"]
+    target_own = int(cfg["cushion_target"])
+    target = rates.to_base(target_own, cushion_currency)
     # Without wallets marked for the cushion, all your money counts toward it.
     cushion_saved = cushion if has_cushion_wallets else money
     used_codes = {w["currency"] for w in wallets} | {r["currency"] for r in recurring if r["is_active"]} | \
                  {p["currency"] for p in planned if p["status"] == "open"}
+    if target_own:
+        used_codes.add(cushion_currency)
     missing_rates = sorted(c["code"] for c in currencies
                            if c["code"] in used_codes and c["code"] != base and Decimal(c["rate"]) == 0)
     totals = {
@@ -1584,11 +1603,16 @@ def get_state(conn, day=None):
     totals = {k: ({t: rates.fmt_base(v) for t, v in val.items()} if isinstance(val, dict) else rates.fmt_base(val))
               for k, val in totals.items()}
     totals["cushion_wallets"] = has_cushion_wallets
+    saved_own = rates.from_base(cushion_saved, cushion_currency)
+    totals["cushion"] = {"currency": cushion_currency, "target": rates.fmt(target_own, cushion_currency),
+                         "saved": rates.fmt(saved_own, cushion_currency),
+                         "left": rates.fmt(max(0, target_own - saved_own), cushion_currency)}
     totals["months_covered"] = (round(max(0, cushion_saved) / monthly_required, 1) if monthly_required > 0 else None)
     totals["missing_rates"] = missing_rates
     return {
         "today": day, "month": day[:7],
-        "config": {"base_currency": base, "cushion_target": rates.fmt_base(target),
+        "config": {"base_currency": base, "cushion_currency": cushion_currency,
+                   "cushion_target": rates.fmt(target_own, cushion_currency),
                    "report_from": cfg["report_from"], "report_to": cfg["report_to"]},
         "currencies": currencies, "wallets": wallets, "categories": categories,
         "recurring": recurring, "planned": planned, "totals": totals,
@@ -1629,7 +1653,7 @@ def export_json(conn):
         item["currency"] = wallet_currency[item["wallet_id"]]
         item["amount"] = from_minor(item["amount"], decimals[item["currency"]])
     data["config"]["cushion_target"] = from_minor(int(data["config"]["cushion_target"]),
-                                                  decimals[data["config"]["base_currency"]])
+                                                  decimals[data["config"]["cushion_currency"]])
     return data
 
 

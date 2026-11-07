@@ -615,6 +615,7 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
 .cushion-target { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .cushion-target label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: var(--foreground-2); }
 .cushion-target .amount-field { width: 200px; }
+.cushion-target select { width: 200px; }
 .cushion-target .muted { align-self: center; }
 .cushion .meter { margin-bottom: 10px; }
 

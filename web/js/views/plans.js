@@ -5,9 +5,9 @@ import {
   openRecurring, openPay, openPlanned, openBuy, openTransactionById, openBudget, PRIORITY_NAMES,
 } from '../editor.js';
 import { confirmDialog } from '../dialogs.js';
-import { fmtMoney, fmtBase, fmtBaseNum, toNum, symbolOf, cleanAmount, baseCurrency } from '../money.js';
+import { fmtMoney, fmtBase, fmtBaseNum, toNum, symbolOf, cleanAmount, baseCurrency, convert } from '../money.js';
 import { meter } from '../chart.js';
-import { esc, freshBox, fmtDate, fmtMonth, paint, toast } from '../util.js';
+import { esc, freshBox, fmtDate, fmtMonth, paint, toast, opt } from '../util.js';
 import { icon } from '../icons.js';
 import { missingRatesBanner, budgetRow, afterPayments } from './parts.js';
 
@@ -83,6 +83,12 @@ export function render(view) {
   const closed = s.planned.filter((p) => p.status !== 'open');
   const cushionWallets = s.wallets.filter((w) => w.is_cushion && w.type !== 'debt');
   const overBudget = s.budgets.filter((b) => b.share > 1).length;
+  const cushion = t.cushion;
+  // 3 or 6 months of payments, in the cushion's currency ('' without a rate for it).
+  const advice = (months) => {
+    const value = convert((toNum(t.monthly_required) * months).toFixed(2), baseCurrency(), cushion.currency);
+    return value ? fmtMoney(value, cushion.currency) : '';
+  };
 
   root.innerHTML = `
     ${missingRatesBanner()}
@@ -142,16 +148,20 @@ export function render(view) {
         <header class="card-head"><h2>Safety cushion</h2></header>
         <form class="cushion-target">
           <label>Target
-            <span class="amount-field"><input name="target" class="amount" inputmode="decimal" value="${toNum(t.cushion_target) ? esc(s.config.cushion_target) : ''}" placeholder="0.00"><span class="cur">${esc(symbolOf(baseCurrency()))}</span></span>
+            <span class="amount-field"><input name="target" class="amount" inputmode="decimal" value="${toNum(cushion.target) ? esc(cushion.target) : ''}" placeholder="0.00"><span class="cur" data-cur-of="target">${esc(symbolOf(cushion.currency))}</span></span>
+          </label>
+          <label>Currency
+            <select name="currency">${s.currencies.map((c) => opt(c.code, `${c.code} — ${c.name}`, cushion.currency)).join('')}</select>
           </label>
           <button type="submit">Save</button>
-          ${t.monthly_required && toNum(t.monthly_required) ? `<span class="muted small">Common advice: 3–6 months of payments, here ${esc(fmtBaseNum(toNum(t.monthly_required) * 3))} – ${esc(fmtBaseNum(toNum(t.monthly_required) * 6))}</span>` : ''}
+          ${toNum(t.monthly_required) && advice(3) ? `<span class="muted small">Common advice: 3–6 months of payments, here ${esc(advice(3))} – ${esc(advice(6))}</span>` : ''}
         </form>
-        ${toNum(t.cushion_target) ? `
+        ${toNum(cushion.target) ? `
           <div class="figure-line">
-            <span><b>${esc(fmtBase(t.cushion_saved))}</b> of ${esc(fmtBase(t.cushion_target))}</span>
-            <span class="muted">${toNum(t.cushion_left) ? `left to save <b class="fg">${esc(fmtBase(t.cushion_left))}</b>` : 'target reached'}
+            <span><b>${esc(fmtMoney(cushion.saved, cushion.currency))}</b> of ${esc(fmtMoney(cushion.target, cushion.currency))}</span>
+            <span class="muted">${toNum(cushion.left) ? `left to save <b class="fg">${esc(fmtMoney(cushion.left, cushion.currency))}</b>` : 'target reached'}
               ${t.months_covered != null ? ` · covers ${t.months_covered} month${t.months_covered === 1 ? '' : 's'} of payments` : ''}</span>
+            ${cushion.currency !== baseCurrency() ? `<span class="muted small">≈ ${esc(fmtBase(t.cushion_saved))} of ${esc(fmtBase(t.cushion_target))}</span>` : ''}
           </div>
           ${meter(toNum(t.cushion_saved), toNum(t.cushion_target), { label: 'Cushion saved' })}` : ''}
         <p class="hint">${cushionWallets.length
@@ -189,7 +199,11 @@ export function render(view) {
     const text = e.target.target.value.trim();
     const value = text ? cleanAmount(text) : '0';
     if (value === null || value.startsWith('-')) return toast('Enter an amount', 'error');
-    act(() => api.put('/api/config', { cushion_target: value }), 'Cushion target saved');
+    act(() => api.put('/api/config', { cushion_target: value, cushion_currency: e.target.currency.value }), 'Cushion target saved');
     return undefined;
+  });
+  // The symbol follows the picked currency; the amount is saved as typed, in that currency.
+  root.querySelector('.cushion-target [name=currency]').addEventListener('change', (e) => {
+    root.querySelector('.cushion-target [data-cur-of=target]').textContent = symbolOf(e.target.value);
   });
 }
