@@ -27,7 +27,7 @@ Tests: `python3 -m unittest discover tests`
 |---|---|---|
 | 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe; free money (after the cushion and plan savings); monthly payments, plans and the cushion at a glance. Below, **Income and spending** for a period (this month, last month, 3 months, this year, 12 months, custom): spending by category as a pie (the six largest; smaller ones fold into "Other"; the list next to it gives each amount and share) and income by source as bars, each with its total. Click a category or "Other" to see what's inside. Changing the period redraws only this part |
 | 2 | Transactions | Everything by day, a month at a time or all time. Filter by wallet, category (with its subcategories) or type; search notes and line descriptions. Click a transaction to edit or delete it |
-| 3 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense). **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside, it stays in your wallets but no longer counts as free), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
+| 3 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense with the real amount; "paid" counts what you really paid). A payment marked **the amount varies** (utilities, phone) is expected to cost the average of its last 3 payments; until it has any, the rough amount you entered. **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside, it stays in your wallets but no longer counts as free), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
 | 4 | Wallets | Wallets by type with their balance (and its value in the base currency). **Check** compares with the real balance and records the difference. **Debts**: one entry per person, Give / Get money |
 | 5 | Settings | Base currency and exchange rates, spending categories and income sources, theme, export to CSV / JSON |
 
@@ -92,12 +92,12 @@ over `data/finance.db`.
 | `categories` | `name`, `kind` (expense / income), `parent_id`, `color`, `is_active`, `is_deleted` |
 | `transactions` | `date`, `type`, `note`, `recurring_id` (a monthly payment it pays), `planned_id` (a plan it buys), `is_deleted` |
 | `entries` | `transaction_id`, `wallet_id`, `amount` (minor units, with a sign), `category_id`, `description` |
-| `recurring` | monthly payments: `name`, `amount`, `currency`, `category_id`, `wallet_id`, `day`, `is_active` |
+| `recurring` | monthly payments: `name`, `amount` (for a varying one, roughly), `currency`, `category_id`, `wallet_id`, `day`, `is_active`, `is_variable` |
 | `planned` | `name`, `amount`, `currency`, `category_id`, `priority`, `due`, `notes`, `status` (open / done / dropped) |
 | `plan_savings` | money put aside for a plan (or taken back, below zero): `planned_id`, `date`, `amount`, `note` |
 | `undo_log` | the rows each action changed, as they were before, for Ctrl+Z |
 
-The schema version is `PRAGMA user_version`; new versions add a migration at the end of `MIGRATIONS` in `db.py`.
+The schema version is `PRAGMA user_version`; new versions add a migration at the end of `MIGRATIONS` in `db.py`. When the server opens an older database, it first copies it to `finance-before-vN-….db` in the backup folder (kept until you delete it), then upgrades it.
 
 ### Limits
 

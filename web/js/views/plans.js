@@ -19,6 +19,24 @@ const inBase = (amount, currency, amountBase) =>
   (currency === baseCurrency() ? '' : `<span class="base-hint">≈ ${esc(fmtBase(amountBase))}</span>`);
 const ordinal = (n) => `${n}${[, 'st', 'nd', 'rd'][n % 100 >> 3 ^ 1 && n % 10] || 'th'}`;
 
+/** The amount of a monthly payment: fixed, or (when it varies) about the average of the last payments;
+ * once paid this month, also what was really paid when it differs. */
+function recurringAmount(r) {
+  let html;
+  if (!r.is_variable) {
+    html = `<b>${esc(fmtMoney(r.amount, r.currency))}</b>${inBase(r.amount, r.currency, r.amount_base)}`;
+  } else if (r.expected_from) {
+    html = `<b title="Average of the last ${r.expected_from} payment${r.expected_from === 1 ? '' : 's'}">~${esc(fmtMoney(r.expected, r.currency))}</b>
+      ${inBase(r.expected, r.currency, r.expected_base)}<span class="base-hint">varies · avg of ${r.expected_from}</span>`;
+  } else {
+    html = `<b>~${esc(fmtMoney(r.amount, r.currency))}</b><span class="base-hint">varies</span>`;
+  }
+  if (r.paid_tx_id && (r.is_variable || r.paid_base !== r.amount_base)) {
+    html += `<span class="base-hint paid-amount">paid ${esc(fmtBase(r.paid_base))}</span>`;
+  }
+  return html;
+}
+
 function recurringRow(r, month) {
   const w = r.wallet_id ? walletById(r.wallet_id) : null;
   return `<li class="plan-row ${r.is_active ? '' : 'inactive'}" data-recurring="${r.id}">
@@ -27,7 +45,7 @@ function recurringRow(r, month) {
       <div class="plan-name">${esc(r.name)}</div>
       <div class="plan-meta">${categoryTag(r.category_id)}${w ? `<span class="muted">from ${esc(w.name)}</span>` : ''}</div>
     </div>
-    <div class="plan-amount"><b>${esc(fmtMoney(r.amount, r.currency))}</b>${inBase(r.amount, r.currency, r.amount_base)}</div>
+    <div class="plan-amount">${recurringAmount(r)}</div>
     <div class="plan-actions">
       ${!r.is_active ? '<span class="muted small">paused</span>'
         : r.paid_tx_id ? `<button type="button" class="ghost paid" data-act="open-paid" title="Paid ${esc(fmtDate(r.paid_date))}: open the payment">${icon('check', 14)} Paid ${esc(fmtDate(r.paid_date).slice(0, 5))}</button>`

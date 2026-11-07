@@ -76,6 +76,23 @@ class Seed(Base):
         self.assertIn("Salary", paths)
         self.assertEqual(self.db.conn.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS))
 
+    def test_old_database_is_migrated(self):
+        old = Path(self.tmp.name) / "old.db"
+        conn = sqlite3.connect(old, isolation_level=None)
+        db.migration_1(conn)
+        conn.execute("PRAGMA user_version = 1")
+        conn.execute("INSERT INTO recurring (name, amount, currency, created) VALUES ('Rent', 80000, 'USD', 'x')")
+        conn.close()
+        backups = Path(self.tmp.name) / "backups"
+        upgraded = db.Database(old, migration_backup_dir=backups)
+        try:
+            self.assertEqual(upgraded.conn.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS))
+            copy = next(backups.glob("finance-before-v*.db"))  # the old file was saved first
+            self.assertEqual(sqlite3.connect(copy).execute("PRAGMA user_version").fetchone()[0], 1)
+            self.assertEqual(upgraded.read(db.get_state, DAY)["recurring"][0]["is_variable"], False)
+        finally:
+            upgraded.close()
+
     def test_reopen_keeps_data_and_version(self):
         self.wallet("Card")
         self.db.close()
@@ -321,6 +338,40 @@ class Plans(Base):
         self.assertEqual(self.balance(card), "1200.00")
         # last month's payment doesn't count for this month
         self.assertIsNone(self.db.read(db.get_state, "2026-12-01")["recurring"][0]["paid_tx_id"])
+
+    def test_varying_payment_expects_average_of_last_payments(self):
+        card = self.wallet("Card", balance="1000")
+        util = self.w("Add", db.create_recurring, {"name": "Utilities", "amount": "100", "currency": "USD",
+                                                   "is_variable": True, "wallet_id": card})["id"]
+        rec = lambda day=DAY: self.db.read(db.get_state, day)["recurring"][0]  # noqa: E731
+        self.assertEqual((rec()["expected_base"], rec()["expected_from"]), ("100.00", 0))  # no payments yet
+        for date, amount in [("2026-08-10", "80"), ("2026-09-10", "120"), ("2026-10-10", "90"), ("2026-11-10", "130")]:
+            self.w("Pay", db.pay_recurring, util, {"date": date, "amount": amount})
+        state = self.db.read(db.get_state, DAY)
+        self.assertEqual(state["recurring"][0]["expected_base"], "113.33")  # (120 + 90 + 130) / 3
+        self.assertEqual(state["recurring"][0]["expected"], "113.33")
+        self.assertEqual(state["recurring"][0]["paid_base"], "130.00")
+        self.assertEqual(state["totals"]["monthly_required"], "113.33")
+        self.assertEqual(state["totals"]["monthly_paid"], "130.00")  # what was really paid
+        self.assertEqual(state["totals"]["monthly_left"], "0.00")
+        december = self.db.read(db.get_state, "2026-12-01")
+        self.assertEqual(december["totals"]["monthly_left"], "113.33")
+
+    def test_varying_payment_average_in_its_own_currency(self):
+        card = self.wallet("Card RUB", currency="RUB", balance="100000")
+        self.set_rate("RUB", "0.011")
+        util = self.w("Add", db.create_recurring, {"name": "Utilities", "amount": "6000", "currency": "RUB",
+                                                   "is_variable": True, "wallet_id": card})["id"]
+        for date, amount in [("2026-08-15", "5200"), ("2026-09-15", "5800"), ("2026-10-15", "7400")]:
+            self.w("Pay", db.pay_recurring, util, {"date": date, "amount": amount})
+        self.assertEqual(self.state()["recurring"][0]["expected"], "6133.33")  # no detour through the base currency
+
+    def test_fixed_payment_counts_what_was_really_paid(self):
+        card = self.wallet("Card", balance="2000")
+        rent = self.w("Add", db.create_recurring, {"name": "Rent", "amount": "800", "currency": "USD", "wallet_id": card})["id"]
+        self.w("Pay", db.pay_recurring, rent, {"date": DAY, "amount": "850"})
+        totals = self.state()["totals"]
+        self.assertEqual((totals["monthly_required"], totals["monthly_paid"]), ("800.00", "850.00"))
 
     def test_pay_in_another_currency_needs_amount(self):
         card = self.wallet("Card RUB", currency="RUB", balance="100000")

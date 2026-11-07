@@ -339,7 +339,7 @@ def load_env_file(path=ENV_FILE):
 def open_database(path=DB_FILE):
     global database
     path.parent.mkdir(parents=True, exist_ok=True)
-    database = db.Database(path, before_write=backup_daily)
+    database = db.Database(path, before_write=backup_daily, migration_backup_dir=BACKUP_DIR)
     return database
 
 

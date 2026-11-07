@@ -525,8 +525,13 @@ export function openRecurring(item = null) {
     ${header(item ? 'Edit monthly payment' : 'New monthly payment')}
     <label>Name <input name="name" value="${esc(item?.name ?? '')}" placeholder="Rent, internet, gym…" ${maxlength('name')}></label>
     <div class="grid">
-      <label>Amount ${amountField('amount', item?.amount ?? '', currency)}</label>
+      <label><span class="amount-label">${item?.is_variable ? 'About' : 'Amount'}</span> ${amountField('amount', item?.amount ?? '', currency)}</label>
       <label>Currency <select name="currency">${currencyOptions(currency)}</select></label>
+    </div>
+    <label class="check"><input type="checkbox" name="is_variable" ${item?.is_variable ? 'checked' : ''}> The amount varies (utilities, phone…)</label>
+    <p class="field-hint variable-hint" ${item?.is_variable ? '' : 'hidden'}>Enter roughly how much it is. Once it has been paid,
+      the monthly total uses the average of the last 3 payments instead; each time you pay, you enter the real bill.</p>
+    <div class="grid">
       <div class="field">Category ${comboHTML('category_id', categoryItems('expense', item?.category_id ? [item.category_id] : []), item?.category_id,
         { placeholder: 'Category', creatable: true })}</div>
       <label>Day of the month <input name="day" type="number" min="1" max="31" value="${item?.day ?? 1}"></label>
@@ -538,13 +543,17 @@ export function openRecurring(item = null) {
   form.querySelector('[name=currency]').addEventListener('change', (e) => {
     form.querySelector('[data-cur-of=amount]').textContent = symbolOf(e.target.value);
   });
+  form.querySelector('[name=is_variable]').addEventListener('change', (e) => {
+    form.querySelector('.amount-label').textContent = e.target.checked ? 'About' : 'Amount';
+    form.querySelector('.variable-hint').hidden = !e.target.checked;
+  });
   if (!item) form.querySelector('[name=name]').focus();
   onSubmit(form, async () => {
     const data = Object.fromEntries(new FormData(form));
     const amount = readAmount(form.querySelector('[name=amount]'));
     if (amount === null) return false;
     const payload = {
-      name: data.name, amount, currency: data.currency, day: Number(data.day) || 1,
+      name: data.name, amount, currency: data.currency, day: Number(data.day) || 1, is_variable: !!data.is_variable,
       category_id: Number(data.category_id) || null, wallet_id: Number(data.wallet_id) || null,
     };
     if (item) payload.is_active = !!data.is_active;
@@ -560,7 +569,7 @@ export function openRecurring(item = null) {
  * Spending dialog for Pay (monthly payment) and Bought (plan): wallet, amount (in the wallet's currency,
  * suggested from the planned amount), date, category.
  */
-function openSpend({ title, hint, amount, currency, walletId, categoryId, ok, send }) {
+function openSpend({ title, hint, amount, currency, walletId, categoryId, ok, send, amountLabel = 'Amount' }) {
   const start = walletId ?? moneyWallets()[0]?.id;
   const suggest = (id) => (currencyOfWallet(id) === currency ? amount : convert(amount, currency, currencyOfWallet(id)));
   const form = openForm(`
@@ -568,7 +577,7 @@ function openSpend({ title, hint, amount, currency, walletId, categoryId, ok, se
     <p class="hint">${hint}</p>
     <div class="field">Paid from ${walletCombo('wallet_id', start)}</div>
     <div class="grid">
-      <label>Amount ${amountField('amount', suggest(start), currencyOfWallet(start))}</label>
+      <label>${esc(amountLabel)} ${amountField('amount', suggest(start), currencyOfWallet(start))}</label>
       <label>Date ${dateInput('date', today())}</label>
     </div>
     <div class="field">Category ${comboHTML('category_id', categoryItems('expense', categoryId ? [categoryId] : []), categoryId,
@@ -597,10 +606,17 @@ function openSpend({ title, hint, amount, currency, walletId, categoryId, ok, se
 }
 
 export function openPay(item) {
+  // A varying payment suggests what it usually costs; type the real bill over it.
+  const usual = item.is_variable && item.expected_from;
   openSpend({
     title: `Pay: ${item.name}`,
-    hint: `Planned: <b>${esc(fmtMoney(item.amount, item.currency))}</b> on day ${item.day}. Records an expense and marks this month as paid.`,
-    amount: item.amount, currency: item.currency, walletId: item.wallet_id, categoryId: item.category_id, ok: 'Pay',
+    hint: item.is_variable
+      ? `Usually about <b>${esc(fmtMoney(usual ? item.expected : item.amount, item.currency))}</b>${usual ? ` (average of the last ${item.expected_from})` : ''}.
+         Enter this month's bill. Records an expense and marks this month as paid.`
+      : `Planned: <b>${esc(fmtMoney(item.amount, item.currency))}</b> on day ${item.day}. Records an expense and marks this month as paid.`,
+    amount: usual ? item.expected : item.amount, currency: item.currency,
+    amountLabel: item.is_variable ? "This month's bill" : 'Amount',
+    walletId: item.wallet_id, categoryId: item.category_id, ok: 'Pay',
     send: (body) => act(() => api.post(`/api/recurring/${item.id}/pay`, body), `Paid: ${item.name}`),
   });
 }

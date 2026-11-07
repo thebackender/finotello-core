@@ -76,7 +76,7 @@ export function render(view) {
           <div class="muted small">Paid ${esc(fmtBase(t.monthly_paid))} · left ${esc(fmtBase(t.monthly_left))}</div>
           ${unpaid.length ? `<ul class="mini-list">${unpaid.slice(0, 5).map((r) => `<li>
             <span class="day">${r.day}</span><span class="grow">${esc(r.name)}</span>
-            <span class="num">${esc(fmtBase(r.amount_base))}</span>
+            <span class="num" ${r.is_variable ? 'title="Varies: what it usually costs"' : ''}>${r.is_variable ? '~' : ''}${esc(fmtBase(r.expected_base))}</span>
             <button type="button" class="small" data-pay="${r.id}">Pay</button></li>`).join('')}</ul>`
             : s.recurring.length ? `<p class="ok-line">${icon('check', 14)} All paid for ${fmtMonth(month)}</p>`
               : '<p class="muted small">No monthly payments yet. Add rent, subscriptions, loans in Plans.</p>'}

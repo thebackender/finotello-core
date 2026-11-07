@@ -208,9 +208,16 @@ def migration_1(conn):
                              (sub, kind, parent, color))
 
 
+def migration_2(conn):
+    # A monthly payment whose amount changes from month to month (utilities, phone): its expected amount
+    # becomes the average of the last payments.
+    conn.execute("ALTER TABLE recurring ADD COLUMN is_variable INTEGER NOT NULL DEFAULT 0")
+
+
 # Migrations by number: MIGRATIONS[n] brings the database from version n to n + 1 (PRAGMA user_version).
 # Add new ones at the end; never change one that has shipped.
-MIGRATIONS = [migration_1]
+MIGRATIONS = [migration_1, migration_2]
+VARIABLE_AVERAGE_OF = 3  # a varying monthly payment is expected to cost the average of this many last payments
 
 
 def migrate(conn):
@@ -411,8 +418,9 @@ class Change:
 
 
 class Database:
-    def __init__(self, path, before_write=None):
-        """before_write: called (under the lock) before every change, e.g. for the daily backup."""
+    def __init__(self, path, before_write=None, migration_backup_dir=None):
+        """before_write: called (under the lock) before every change, e.g. for the daily backup.
+        migration_backup_dir: where to copy an existing database before its schema is upgraded."""
         self.path = path
         self.lock = threading.RLock()
         self.before_write = before_write
@@ -424,6 +432,13 @@ class Database:
         self.conn.create_function("casefold", 1, lambda s: s.casefold() if isinstance(s, str) else s,
                                   deterministic=True)
         with self.lock:
+            version = self.conn.execute("PRAGMA user_version").fetchone()[0]
+            if migration_backup_dir and 0 < version < len(MIGRATIONS):
+                from pathlib import Path
+                folder = Path(migration_backup_dir)
+                folder.mkdir(parents=True, exist_ok=True)
+                # Not named like the daily / button backups, so their rotation never removes it.
+                self.backup_to(folder / f"finance-before-v{len(MIGRATIONS)}-{datetime.now():%Y-%m-%d_%H-%M-%S}.db")
             migrate(self.conn)
 
     def close(self):
@@ -1172,6 +1187,7 @@ def clean_recurring(conn, body, current=None):
         "wallet_id": as_id(get("wallet_id"), "Wallet"),
         "day": as_int(get("day", 1), "Day of the month", 1, 31),
         "is_active": int(as_bool(get("is_active", True), "Active")),
+        "is_variable": int(as_bool(get("is_variable", False), "Amount varies")),
     }
     if values["amount"] <= 0:
         raise ApiError("Amount must be above zero")
@@ -1482,25 +1498,49 @@ def get_state(conn, day=None):
         "count": entry_counts.get(r["id"], 0),
     } for r in category_rows]
 
-    paid = {row["recurring_id"]: row for row in conn.execute(
-        """SELECT recurring_id, MAX(id) AS id, MAX(date) AS date FROM transactions
-           WHERE is_deleted = 0 AND recurring_id IS NOT NULL AND date BETWEEN ? AND ?
-           GROUP BY recurring_id""", (month_from, month_to))}
+    # What was really paid for each monthly payment, per transaction, in the base currency, newest first.
+    payments = {}
+    for row in conn.execute("""SELECT t.recurring_id, t.id, t.date, w.currency, SUM(e.amount) AS total
+            FROM transactions t JOIN entries e ON e.transaction_id = t.id JOIN wallets w ON w.id = e.wallet_id
+            WHERE t.is_deleted = 0 AND t.recurring_id IS NOT NULL
+            GROUP BY t.id, w.currency ORDER BY t.date DESC, t.id DESC"""):
+        by_tx = payments.setdefault(row["recurring_id"], {})
+        tx = by_tx.setdefault(row["id"], {"id": row["id"], "date": row["date"], "base": 0, "lines": []})
+        tx["base"] -= rates.to_base(row["total"], row["currency"])  # an expense is below zero
+        tx["lines"].append((row["currency"], -row["total"]))
     recurring = []
-    monthly_required = monthly_paid = 0
+    monthly_required = monthly_paid = monthly_left = 0
     for r in conn.execute("SELECT * FROM recurring WHERE is_deleted = 0 ORDER BY day, id"):
         in_base = rates.to_base(r["amount"], r["currency"])
-        paid_tx = paid.get(r["id"])
+        history = list(payments.get(r["id"], {}).values())
+        this_month = [p for p in history if month_from <= p["date"] <= month_to]
+        paid_now = sum(p["base"] for p in this_month)
+        # A varying payment is expected to cost what it did lately; until it has been paid, what you entered.
+        recent = history[:VARIABLE_AVERAGE_OF] if r["is_variable"] else []
+        expected = round(sum(p["base"] for p in recent) / len(recent)) if recent else in_base
+
+        def own(payment):
+            # A payment in the payment's own currency: exact when paid from a wallet in that currency.
+            return sum(amount if code == r["currency"] else rates.from_base(rates.to_base(amount, code), r["currency"])
+                       for code, amount in payment["lines"])
+        expected_own = round(sum(own(p) for p in recent) / len(recent)) if recent else r["amount"]
         recurring.append({
             "id": r["id"], "name": r["name"], "amount": rates.fmt(r["amount"], r["currency"]),
             "currency": r["currency"], "amount_base": rates.fmt_base(in_base), "category_id": r["category_id"],
             "wallet_id": r["wallet_id"], "day": r["day"], "is_active": bool(r["is_active"]),
-            "paid_tx_id": paid_tx["id"] if paid_tx else None, "paid_date": paid_tx["date"] if paid_tx else None,
+            "is_variable": bool(r["is_variable"]),
+            "expected": rates.fmt(expected_own, r["currency"]), "expected_base": rates.fmt_base(expected),
+            "expected_from": len(recent),
+            "paid_tx_id": this_month[0]["id"] if this_month else None,
+            "paid_date": this_month[0]["date"] if this_month else None,
+            "paid_base": rates.fmt_base(paid_now),
         })
         if r["is_active"]:
-            monthly_required += in_base
-            if paid_tx:
-                monthly_paid += in_base
+            monthly_required += expected
+            if this_month:
+                monthly_paid += paid_now
+            else:
+                monthly_left += expected
 
     planned = []
     planned_total = planned_saved = planned_missing = 0
@@ -1556,7 +1596,7 @@ def get_state(conn, day=None):
         "month_expense": month_flows["expense"],
         "monthly_required": monthly_required,
         "monthly_paid": monthly_paid,
-        "monthly_left": monthly_required - monthly_paid,
+        "monthly_left": monthly_left,
         "planned_total": planned_total,
         "planned_saved": planned_saved,
         "planned_missing": planned_missing,
