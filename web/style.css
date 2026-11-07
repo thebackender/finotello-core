@@ -738,7 +738,8 @@ table.currencies td { vertical-align: middle; }
 /* Hide balances: the eye button and the dots in place of amounts. */
 .eye-btn { width: 28px; height: 28px; }
 .eye-btn:hover:not(:disabled) { color: var(--foreground); }
-.tile-label .eye-btn { margin-left: 2px; vertical-align: middle; }
+.tile-label:has(.eye-btn) { display: flex; align-items: center; gap: 4px; }
+.tile-label .eye-btn { width: 24px; height: 24px; margin: -4px 0; } /* doesn't make the line taller */
 .masked { letter-spacing: 0.04em; }
 .report-part + .cards-3 { margin-top: 16px; }
 
