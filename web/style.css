@@ -412,6 +412,7 @@ button.destructive:hover:not(:disabled) { background: #b91c1c; }
   --meter-fill: #2a78d6;
   --meter-track: #cde2fb;
   --meter-over: #d03b3b;
+  --meter-warn: #fab219;
   --warn-bg: #fffbeb;
   --warn-border: #fde68a;
   --warn-fg: #92400e;
@@ -479,6 +480,7 @@ button.small { height: 28px; padding: 0 10px; font-size: 13px; }
 .meter { display: block; height: 8px; border-radius: 999px; background: var(--meter-track); overflow: hidden; }
 .meter-fill { display: block; height: 100%; border-radius: 999px; background: var(--meter-fill); }
 .meter.over .meter-fill { background: var(--meter-over); }
+.meter.warn .meter-fill { background: var(--meter-warn); }
 
 /* Thin segmented bar: one whole split into parts, 2px surface gap between them, rounded ends. */
 .segbar { display: flex; gap: 2px; height: 8px; border-radius: 999px; overflow: hidden; }
@@ -717,8 +719,57 @@ table.currencies td { vertical-align: middle; }
 .row-menu .menu { min-width: 170px; gap: 2px; padding: 6px; }
 .row-menu .menu button { justify-content: flex-start; height: 32px; padding: 0 8px; font-size: 13px; }
 
+.cards-3.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1300px) { .cards-3.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Budgets: one row per category, spent of the limit and a bar */
+.budget-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.budget-row { display: flex; flex-direction: column; gap: 6px; }
+.budget-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.budget-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 500; }
+.budget-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-nums { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.budget-top .icon { width: 28px; height: 28px; }
+.budget-left { color: var(--muted-foreground); display: flex; align-items: center; gap: 4px; }
+.budget-left b { color: var(--foreground); font-weight: 600; }
+.budget-left.over, .budget-left.over b { color: var(--destructive); }
+.budget-left .i { color: var(--warn-icon); }
+.budget-left.over .i { color: var(--destructive); }
+.cards-3 .budget-list { gap: 10px; }
+
+/* Line chart: capital by month */
+.line-wrap { display: flex; flex-direction: column; gap: 8px; }
+.line-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--foreground-2); }
+.line-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.line-plot { position: relative; }
+.line-chart { display: block; overflow: visible; outline: none; touch-action: pan-y; }
+.line-chart:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+.axis-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.axis-base { stroke: var(--chart-baseline); stroke-width: 1; }
+.axis-label { fill: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+.end-label { fill: var(--foreground); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.series-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.series-dot { stroke: var(--card); stroke-width: 2; }
+.crosshair { stroke: var(--border-strong); stroke-width: 1; }
+.chart-table summary { cursor: pointer; font-size: 13px; color: var(--muted-foreground); width: max-content; }
+.chart-table .table-wrap { margin-top: 8px; max-height: 280px; overflow: auto; }
+.history-card { margin-bottom: 16px; }
+
+/* Templates: a small field in the dialog's title row, out of the way until you need it */
+.template-pick { position: relative; width: 150px; margin-right: 4px; }
+.template-pick > .i { position: absolute; left: 9px; top: 8px; z-index: 1; pointer-events: none; }
+.template-pick .combo-input {
+  height: 30px !important; padding-left: 28px !important; font-size: 13px !important;
+  border-color: transparent !important; box-shadow: none !important; background: transparent !important; color: var(--muted-foreground);
+}
+.template-pick .combo-input:hover { background: var(--accent) !important; }
+.template-pick .combo-input:focus { border-color: var(--input) !important; background: var(--background) !important; color: var(--foreground); }
+.template-pick .combo-list { left: auto; right: 0; width: 340px; font-size: 13px; }
+.template-pick .combo-list li .muted { margin-left: 6px; }
+.manage-list.templates .name { min-width: 0; font-weight: 500; }
+
 @media (max-width: 1100px) {
-  .cards-3 { grid-template-columns: minmax(0, 1fr); }
+  .cards-3, .cards-3.four { grid-template-columns: minmax(0, 1fr); }
   .money { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 900px) {

@@ -6,7 +6,7 @@ import { fmtBase, toNum } from '../money.js';
 import { meter, segmentedBar } from '../chart.js';
 import { esc, freshBox, fmtMonth, paint, PALETTE } from '../util.js';
 import { icon, WALLET_ICONS } from '../icons.js';
-import { missingRatesBanner } from './parts.js';
+import { missingRatesBanner, budgetRow } from './parts.js';
 import { renderReports } from './reports.js';
 import { secret, eyeButton } from '../privacy.js';
 
@@ -41,6 +41,7 @@ export function render(view) {
   const openPlans = s.planned.filter((p) => p.status === 'open');
   const cushionTarget = toNum(t.cushion_target);
   const cushionSaved = toNum(t.cushion_saved);
+  const overBudget = s.budgets.filter((b) => b.share > 1).length;
 
   root.innerHTML = `
     <div class="overview">
@@ -67,7 +68,7 @@ export function render(view) {
 
       <div class="report-part"></div>
 
-      <div class="cards-3">
+      <div class="cards-3 four">
         <section class="card">
           <header class="card-head"><h3>${icon('calendarCheck', 16, 'muted')} Monthly payments</h3><a href="#plans">All</a></header>
           <div class="figure-line"><b>${esc(fmtBase(t.monthly_required))}</b><span class="muted">a month</span></div>
@@ -89,6 +90,15 @@ export function render(view) {
           ${openPlans.length ? `<ul class="mini-list">${openPlans.slice(0, 4).map((p) => `<li>
             <span class="grow">${esc(p.name)}</span><span class="num">${esc(fmtBase(p.amount_base))}</span></li>`).join('')}</ul>`
             : '<p class="muted small">Nothing planned. Add a purchase or a treatment you are saving for.</p>'}
+        </section>
+
+        <section class="card">
+          <header class="card-head"><h3>${icon('target', 16, 'muted')} Budgets</h3><a href="#plans">All</a></header>
+          ${s.budgets.length ? `<div class="muted small">${esc(fmtMonth(month))}${overBudget ? ` · <span class="neg">${overBudget} over the limit</span>` : ''}</div>
+            <ul class="budget-list">${s.budgets.slice(0, 4).map((b) => budgetRow(b)).join('')}</ul>
+            ${s.budgets.length > 4 ? `<a class="muted small" href="#plans">${s.budgets.length - 4} more</a>` : ''}`
+            : `<p class="muted small">Set a monthly limit for a category and see how much is left this month.</p>
+             <a class="button-link" href="#plans">Set a budget</a>`}
         </section>
 
         <section class="card">

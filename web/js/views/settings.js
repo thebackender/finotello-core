@@ -1,7 +1,7 @@
-// Settings tab: base currency, currencies and their rates, categories, theme, export.
+// Settings tab: base currency, currencies and their rates, categories, templates, theme, export.
 import * as api from '../api.js';
 import { store, act, categoryList, categoryById, maxlength } from '../store.js';
-import { setupColorPicker } from '../editor.js';
+import { setupColorPicker, templateSummary, TX_TYPE_NAMES } from '../editor.js';
 import { ask, confirmDialog, promptDialog } from '../dialogs.js';
 import { cleanAmount, baseCurrency } from '../money.js';
 import { THEMES, setTheme } from '../theme.js';
@@ -10,6 +10,16 @@ import { esc, freshBox, opt, fmtTs, paint, toast } from '../util.js';
 import { icon } from '../icons.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function templateRows() {
+  return store.state.templates.map((t) => `<li data-template="${t.id}">
+    <span class="name">${icon('bookmark', 14, 'muted')}${esc(t.name)}</span>
+    <span class="muted">${esc(TX_TYPE_NAMES[t.type])} · ${esc(templateSummary(t))}</span>
+    <span class="spacer"></span>
+    <button type="button" class="icon" data-act="rename-template" title="Rename" aria-label="Rename ${esc(t.name)}">${icon('pencil')}</button>
+    <button type="button" class="icon" data-act="delete-template" title="Delete" aria-label="Delete ${esc(t.name)}">${icon('trash')}</button>
+  </li>`).join('');
+}
 
 function currencyRows() {
   const base = baseCurrency();
@@ -100,6 +110,12 @@ export function render(view) {
         ${categoryCard('expense', 'Spending categories', 'Two levels: <b>Category</b> or <b>Category:Subcategory</b>. Reports add subcategories into their category.')}
         ${categoryCard('income', 'Income sources', 'Where money comes from: salary, freelance, gifts. Subcategories work the same way.')}
       </div>
+
+      <section class="settings-card">
+        <h2>Transaction templates</h2>
+        <p class="hint">Made with “Save as template” in a transaction's dialog; they show at the top of New transaction.</p>
+        ${store.state.templates.length ? `<ul class="manage-list templates">${templateRows()}</ul>` : '<p class="muted small">No templates yet.</p>'}
+      </section>
 
       <section class="settings-card">
         <h2>Appearance</h2>
@@ -211,6 +227,18 @@ export function render(view) {
     if (btn?.dataset.act === 'remove-currency') {
       const code = btn.closest('[data-code]').dataset.code;
       return act(() => api.del(`/api/currencies/${code}`), `Removed ${code}`);
+    }
+    const tli = btn?.closest('[data-template]');
+    if (tli) {
+      const t = s.templates.find((x) => x.id === Number(tli.dataset.template));
+      if (btn.dataset.act === 'rename-template') {
+        const name = await promptDialog({ title: 'Rename template', value: t.name, ok: 'Rename', attrs: maxlength('name') });
+        if (name && name !== t.name) await act(() => api.put(`/api/templates/${t.id}`, { name }), 'Renamed');
+      } else if (btn.dataset.act === 'delete-template'
+        && await confirmDialog({ title: `Delete the template “${t.name}”?`, text: 'Transactions made with it stay.', danger: true, ok: 'Delete' })) {
+        await act(() => api.del(`/api/templates/${t.id}`), 'Deleted');
+      }
+      return undefined;
     }
     const li = btn?.closest('[data-category]');
     if (!li) return undefined;

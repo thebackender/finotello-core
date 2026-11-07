@@ -94,6 +94,7 @@ class Seed(Base):
             self.assertIsNone(upgraded.conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE name = 'undo_log'").fetchone())  # migration 3 dropped it
             self.assertEqual(upgraded.read(db.get_state, DAY)["config"]["report_from"], "")  # migration 4
+            self.assertEqual(upgraded.read(db.get_state, DAY)["templates"], [])  # migration 5
         finally:
             upgraded.close()
 
@@ -453,6 +454,73 @@ class Currencies(Base):
             self.w(db.delete_currency, "EUR")
         self.w(db.delete_currency, "ETH")
         self.assertNotIn("ETH", [c["code"] for c in self.state()["currencies"]])
+
+
+class Budgets(Base):
+    def test_budget_counts_subcategories_this_month(self):
+        card = self.wallet("Card", balance="1000")
+        food, fruits = self.cat("Food"), self.cat("Food:Fruits")
+        self.w(db.update_category, food, {"budget": "100"})
+        self.tx("expense", [{"wallet_id": card, "amount": "-30", "category_id": fruits},
+                            {"wallet_id": card, "amount": "-20", "category_id": food}])
+        self.tx("expense", [{"wallet_id": card, "amount": "-500", "category_id": food}], date="2026-10-30")  # last month
+        [budget] = self.state()["budgets"]
+        self.assertEqual((budget["category_id"], budget["budget"], budget["spent"], budget["left"]),
+                         (food, "100.00", "50.00", "50.00"))
+        self.assertEqual(budget["share"], 0.5)
+        self.w(db.update_category, food, {"budget": ""})
+        self.assertEqual(self.state()["budgets"], [])
+
+    def test_only_spending_categories_above_zero(self):
+        salary = self.cat("Salary", kind="income")
+        with self.assertRaises(ApiError):
+            self.w(db.update_category, salary, {"budget": "100"})
+        with self.assertRaises(ApiError):
+            self.w(db.update_category, self.cat("Food"), {"budget": "-5"})
+
+    def test_base_switch_recounts_budgets(self):
+        food = self.cat("Food")
+        self.w(db.update_category, food, {"budget": "110"})
+        with self.assertRaises(ApiError):  # a budget needs recounting: the new base's rate is required
+            self.w(db.update_config, {"base_currency": "EUR"})
+        self.w(db.update_config, {"base_currency": "EUR", "base_rate": "1.1"})
+        self.assertEqual(next(c for c in self.state()["categories"] if c["id"] == food)["budget"], "100.00")
+
+
+class Templates(Base):
+    def test_create_rename_delete(self):
+        data = {"type": "expense", "note": "Coffee", "lines": [{"amount": "3.5", "category_id": None, "description": ""}]}
+        tid = self.w(db.create_template, {"name": "Coffee", "data": data})["id"]
+        [t] = self.state()["templates"]
+        self.assertEqual((t["id"], t["name"], t["type"], t["data"]), (tid, "Coffee", "expense", data))
+        self.w(db.update_template, tid, {"name": "Latte"})
+        self.assertEqual(self.state()["templates"][0]["name"], "Latte")
+        self.assertEqual(self.state()["templates"][0]["data"], data)
+        self.w(db.delete_template, tid)
+        self.assertEqual(self.state()["templates"], [])
+
+    def test_checks(self):
+        with self.assertRaises(ApiError):
+            self.w(db.create_template, {"name": "X", "data": {"type": "adjustment"}})
+        with self.assertRaises(ApiError):
+            self.w(db.create_template, {"name": "", "data": {"type": "expense"}})
+        with self.assertRaises(ApiError):
+            self.w(db.create_template, {"name": "X", "data": "not a form"})
+
+
+class History(Base):
+    def test_month_end_balances_with_debts(self):
+        card = self.wallet("Card")
+        ivan = self.wallet("Ivan", type_="debt")
+        self.tx("income", [{"wallet_id": card, "amount": "1000"}], date="2026-09-10")
+        self.tx("debt", [{"wallet_id": card, "amount": "-300"}, {"wallet_id": ivan, "amount": "300"}], date="2026-11-02")
+        history = self.state()["history"]
+        self.assertEqual([h["month"] for h in history], ["2026-09", "2026-10", "2026-11"])
+        self.assertEqual([h["money"] for h in history], ["1000.00", "1000.00", "700.00"])
+        self.assertEqual([h["net"] for h in history], ["1000.00", "1000.00", "1000.00"])
+
+    def test_empty(self):
+        self.assertEqual(self.state()["history"], [])
 
 
 class Integrity(Base):

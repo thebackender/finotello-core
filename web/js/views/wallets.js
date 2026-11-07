@@ -1,9 +1,10 @@
 // Wallets tab: your wallets by type with their balances, and the people you lend to or borrow from.
 import { store, moneyWallets, people } from '../store.js';
 import { openWallet, openTransaction } from '../editor.js';
-import { fmtMoney, fmtBase, fmtBaseNum, toNum, baseCurrency } from '../money.js';
+import { fmtMoney, fmtBase, fmtBaseNum, fmtBaseCompact, toNum, baseCurrency } from '../money.js';
+import { lineChartHTML, bindLineChart } from '../chart.js';
 import { getPrefs, setPrefs } from '../prefs.js';
-import { esc, freshBox, paint } from '../util.js';
+import { esc, freshBox, paint, PALETTE } from '../util.js';
 import { icon, WALLET_ICONS } from '../icons.js';
 import { missingRatesBanner } from './parts.js';
 import { showAllTime } from './transactions.js';
@@ -49,6 +50,38 @@ function personRow(p) {
   </li>`;
 }
 
+/** Capital by month: a line chart that redraws when its box changes width. */
+function drawHistory(box, history) {
+  if (balancesHidden()) {
+    box.innerHTML = `<p class="muted">${secret('')} Balances are hidden.</p>`;
+    return;
+  }
+  if (history.length < 2) {
+    box.innerHTML = '<p class="muted">The chart shows month by month, once your transactions span two months.</p>';
+    return;
+  }
+  const months = history.map((h) => h.month);
+  const money = history.map((h) => toNum(h.money));
+  const net = history.map((h) => toNum(h.net));
+  const series = [{ name: 'Money in wallets', color: PALETTE[0], values: money }];
+  if (net.some((v, i) => v !== money[i])) series.push({ name: 'With debts', color: PALETTE[1], values: net });
+  let width = 0;
+  const draw = () => {
+    const w = Math.floor(box.clientWidth);
+    if (!w || w === width) return;
+    width = w;
+    const opts = {
+      months, series, width, fmtShort: fmtBaseCompact, fmtFull: (v) => fmtBaseNum(v),
+      caption: `Money in wallets by month, now ${fmtBaseNum(money.at(-1))}`,
+    };
+    box.innerHTML = lineChartHTML(opts);
+    bindLineChart(box, opts);
+  };
+  draw();
+  const observer = new ResizeObserver(() => (box.isConnected ? draw() : observer.disconnect()));
+  observer.observe(box);
+}
+
 export function render(view) {
   const root = freshBox(view);
   const s = store.state;
@@ -66,6 +99,11 @@ export function render(view) {
       <span class="spacer"></span>
       <button type="button" class="primary" data-act="add-wallet">${icon('plus')} Add wallet</button>
     </div>
+    ${s.history.length ? `<section class="card history-card">
+      <header class="card-head"><h3>${icon('chart', 16, 'muted')} Capital by month</h3><span class="spacer"></span>
+        <span class="muted small">at today's rates</span></header>
+      <div class="history-chart"></div>
+    </section>` : ''}
     ${list.length ? '' : '<div class="card empty-card"><p>No wallets yet. Add your bank accounts, cash and crypto: each has its own currency.</p></div>'}
     ${SECTIONS.map(([type, title]) => {
       const items = list.filter((w) => w.type === type);
@@ -90,6 +128,9 @@ export function render(view) {
     ${archived.length ? `<details class="closed card"><summary>Archived <span class="muted">(${archived.length})</span></summary>
       <p class="hint">Hidden from the lists; their balances still count. Total: ${secret(esc(fmtBaseNum(archived.filter((w) => w.type !== 'debt').reduce((sum, w) => sum + toNum(w.balance_base), 0))))}</p>
       <ul class="plan-list">${archived.map((w) => (w.type === 'debt' ? personRow(w) : walletRow(w))).join('')}</ul></details>` : ''}`;
+
+  const chartBox = root.querySelector('.history-chart');
+  if (chartBox) drawHistory(chartBox, s.history);
 
   root.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');

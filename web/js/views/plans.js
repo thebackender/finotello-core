@@ -2,14 +2,14 @@
 import * as api from '../api.js';
 import { store, act, walletById, categoryById } from '../store.js';
 import {
-  openRecurring, openPay, openPlanned, openSave, openBuy, openTransactionById, PRIORITY_NAMES,
+  openRecurring, openPay, openPlanned, openSave, openBuy, openTransactionById, openBudget, PRIORITY_NAMES,
 } from '../editor.js';
 import { confirmDialog } from '../dialogs.js';
 import { fmtMoney, fmtBase, fmtBaseNum, toNum, symbolOf, cleanAmount, baseCurrency } from '../money.js';
 import { meter } from '../chart.js';
 import { esc, freshBox, fmtDate, fmtMonth, paint, toast } from '../util.js';
 import { icon } from '../icons.js';
-import { missingRatesBanner } from './parts.js';
+import { missingRatesBanner, budgetRow } from './parts.js';
 
 const categoryTag = (id) => {
   const c = id != null ? categoryById(id) : null;
@@ -90,6 +90,7 @@ export function render(view) {
   const closed = s.planned.filter((p) => p.status !== 'open');
   const missing = toNum(t.planned_missing);
   const cushionWallets = s.wallets.filter((w) => w.is_cushion && w.type !== 'debt');
+  const overBudget = s.budgets.filter((b) => b.share > 1).length;
 
   root.innerHTML = `
     ${missingRatesBanner()}
@@ -109,6 +110,18 @@ export function render(view) {
           ${paused.length ? `<details class="closed"><summary>Paused <span class="muted">(${paused.length})</span></summary>
             <ul class="plan-list">${paused.map((r) => recurringRow(r, s.month)).join('')}</ul></details>` : ''}`
           : '<p class="muted">Rent, utilities, subscriptions, loan payments: everything you must pay every month. Their sum shows what a month costs you at least.</p>'}
+      </section>
+
+      <section class="card">
+        <header class="card-head">
+          <h2>${icon('target', 18, 'muted')} Budgets</h2>
+          <span class="spacer"></span>
+          <button type="button" data-act="add-budget">${icon('plus')} Add</button>
+        </header>
+        ${s.budgets.length ? `
+          <div class="summary-line"><span class="muted">${esc(fmtMonth(s.month))}: ${overBudget ? `${overBudget} over the limit` : 'all within the limits'}</span></div>
+          <ul class="budget-list">${s.budgets.map((b) => budgetRow(b, { edit: true })).join('')}</ul>`
+          : '<p class="muted">A monthly limit for a category (food, eating out, shopping) shows how much is left this month. Subcategories count toward their category.</p>'}
       </section>
 
       <section class="card">
@@ -168,6 +181,8 @@ export function render(view) {
       case 'edit-recurring': return openRecurring(rec);
       case 'pay': return openPay(rec);
       case 'open-paid': return openTransactionById(rec.paid_tx_id);
+      case 'add-budget': return openBudget();
+      case 'edit-budget': return openBudget(s.budgets.find((b) => b.category_id === Number(btn.closest('[data-budget]').dataset.budget)));
       case 'add-planned': return openPlanned();
       case 'edit-planned': return openPlanned(plan);
       case 'save': return openSave(plan);

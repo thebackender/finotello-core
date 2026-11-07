@@ -1,8 +1,31 @@
 // Pieces shared by several tabs.
-import { store } from '../store.js';
+import { store, categoryById } from '../store.js';
+import { meter } from '../chart.js';
 import { fmtBase, fmtBaseNum, toNum } from '../money.js';
 import { esc, paint, PALETTE } from '../util.js';
 import { icon } from '../icons.js';
+
+/**
+ * One category budget this month: name, spent of the limit, a bar, and what is left (or over).
+ * The bar turns amber from 90% and red past the limit; the words say so too.
+ */
+export function budgetRow(b, { edit = false } = {}) {
+  const c = categoryById(b.category_id);
+  const left = toNum(b.left);
+  const state = b.share > 1 ? 'over' : b.share >= 0.9 ? 'warn' : '';
+  return `<li class="budget-row" data-budget="${b.category_id}">
+    <div class="budget-top">
+      <span class="budget-name"><i class="dot" style="--c:${paint(c?.color)}"></i><span>${esc(c?.path ?? '?')}</span></span>
+      <span class="spacer"></span>
+      <span class="budget-nums"><b>${esc(fmtBase(b.spent))}</b> <span class="muted">of ${esc(fmtBase(b.budget))}</span></span>
+      ${edit ? `<button type="button" class="icon" data-act="edit-budget" title="Edit" aria-label="Edit the budget of ${esc(c?.path ?? '')}">${icon('pencil')}</button>` : ''}
+    </div>
+    ${meter(toNum(b.spent), toNum(b.budget), { state, label: `${c?.path ?? ''}: ${Math.round(b.share * 100)}% of the budget` })}
+    <div class="budget-left small ${state}">${left < 0
+      ? `${icon('alert', 13)} Over by <b>${esc(fmtBaseNum(-left))}</b>`
+      : `${state === 'warn' ? `${icon('alert', 13)} ` : ''}<b>${esc(fmtBase(b.left))}</b> left · ${Math.round(b.share * 100)}%`}</div>
+  </li>`;
+}
 
 export function missingRatesBanner() {
   const codes = store.state.totals.missing_rates;

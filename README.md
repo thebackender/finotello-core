@@ -25,11 +25,11 @@ Tests: `python3 -m unittest discover tests`
 
 | Key | Tab | What it does |
 |---|---|---|
-| 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe. The eye button next to it hides these balances (here and in Wallets) behind asterisks, e.g. when someone looks at your screen; it stays hidden until you click it again. Under it, spending and income for a period you pick on a calendar (click the start and end days, or type the dates; it is kept in the database; "This month" goes back to the current month, which is also the default): spending by category as a pie (the six largest; smaller ones fold into "Other"; the list next to it gives each amount and share) and income by source as bars, each with its total. Click a category or "Other" to see what's inside. Changing the period redraws only this part. At the bottom, monthly payments, plans and the cushion at a glance |
-| 2 | Transactions | Everything by day, a month at a time or all time. Filter by wallet, category (with its subcategories) or type; search notes and line descriptions. Click a transaction to edit or delete it |
-| 3 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense with the real amount; "paid" counts what you really paid). A payment marked **the amount varies** (utilities, phone) is expected to cost the average of its last 3 payments; until it has any, the rough amount you entered. **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside: it stays in your wallets, only marked for the plan), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
-| 4 | Wallets | Wallets by type with their balance (and its value in the base currency). **Debts**: one entry per person, Give / Get money |
-| 5 | Settings | Base currency and exchange rates, spending categories and income sources, theme, export to CSV / JSON |
+| 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe. The eye button next to it hides these balances (here and in Wallets) behind asterisks, e.g. when someone looks at your screen; it stays hidden until you click it again. Under it, spending and income for a period you pick on a calendar (click the start and end days, or type the dates; it is kept in the database; "This month" goes back to the current month, which is also the default): spending by category as a pie (the six largest; smaller ones fold into "Other"; the list next to it gives each amount and share) and income by source as bars, each with its total. Click a category or "Other" to see what's inside. Changing the period redraws only this part. At the bottom, monthly payments, plans, budgets and the cushion at a glance |
+| 2 | Transactions | Everything by day, a month at a time or all time. Filter by wallet, category (with its subcategories) or type; search notes and line descriptions. Click a transaction to edit or delete it. In its dialog, **Repeat** opens a copy dated today, and **Save as template** keeps the form (wallet, lines, amounts, note): pick one in the small "Templates" field next to the title of New transaction (type to search; Enter fills the form, and Enter again saves when nothing is missing) |
+| 3 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense with the real amount; "paid" counts what you really paid). A payment marked **the amount varies** (utilities, phone) is expected to cost the average of its last 3 payments; until it has any, the rough amount you entered. **Budgets**: a monthly limit for a spending category (its subcategories count toward it), what is spent this month and what is left; the bar turns amber from 90% and red past the limit. **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside: it stays in your wallets, only marked for the plan), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
+| 4 | Wallets | **Capital by month**: money in your wallets at the end of each month, and with debts, as a line chart (at today's rates; hover or use the arrow keys for a month's numbers, "Table" lists them all). Wallets by type with their balance (and its value in the base currency). **Debts**: one entry per person, Give / Get money |
+| 5 | Settings | Base currency and exchange rates, spending categories and income sources, transaction templates (rename, delete), theme, export to CSV / JSON |
 
 ## Keyboard shortcuts
 
@@ -63,7 +63,7 @@ Deleting a category keeps it on old transactions (shown struck through); **Merge
 **Currencies.** Each wallet has one currency. If you picked the wrong one, change it in the wallet's editor: every amount keeps its number in the new currency (1 000 ₽ becomes $1 000). That works while the wallet's transactions involve it alone (starting balance, expenses, income); once it has transfers or debts with other wallets, the currency is fixed, and you move the money to a new wallet with a transfer. Totals are in the base currency, at the rates you
 enter in Settings (one unit of a currency = so much of the base currency). There is one current rate per currency:
 when you change it, all totals and reports are recounted. A currency in use with no rate counts as zero, and a warning says so.
-Changing the base currency recounts all rates through the new one.
+Changing the base currency recounts all rates through the new one, and the cushion target and budgets keep their value in it.
 
 **What counts as spending:** lines with an expense category, in any type of transaction (so transfer fees count),
 and expense lines without a category. Transfers, debts and balance adjustments don't.
@@ -89,12 +89,13 @@ over `data/finance.db`.
 | `config` | `base_currency`, `cushion_target` (minor units of the base currency), `report_from`, `report_to` (Overview's income and spending period; empty = the current month) |
 | `currencies` | `code`, `name`, `kind` (fiat / crypto), `decimals`, `rate` (base currency per unit, a decimal as text; `0` = not set), `rate_updated` |
 | `wallets` | `name`, `type` (bank / cash / crypto / debt), `currency`, `color`, `note`, `is_cushion`, `is_archived`, `is_deleted` |
-| `categories` | `name`, `kind` (expense / income), `parent_id`, `color`, `is_active`, `is_deleted` |
+| `categories` | `name`, `kind` (expense / income), `parent_id`, `color`, `is_active`, `is_deleted`, `budget` (a monthly limit in minor units of the base currency; empty = none) |
 | `transactions` | `date`, `type`, `note`, `recurring_id` (a monthly payment it pays), `planned_id` (a plan it buys), `is_deleted` |
 | `entries` | `transaction_id`, `wallet_id`, `amount` (minor units, with a sign), `category_id`, `description` |
 | `recurring` | monthly payments: `name`, `amount` (for a varying one, roughly), `currency`, `category_id`, `wallet_id`, `day`, `is_active`, `is_variable` |
 | `planned` | `name`, `amount`, `currency`, `category_id`, `priority`, `due`, `notes`, `status` (open / done / dropped) |
 | `plan_savings` | money put aside for a plan (or taken back, below zero): `planned_id`, `date`, `amount`, `note` |
+| `templates` | saved transaction forms: `name`, `type`, `data` (the form as JSON: wallets, lines, amounts, note; an amount may be empty) |
 
 The schema version is `PRAGMA user_version`; new versions add a migration at the end of `MIGRATIONS` in `db.py`. When the server opens an older database, it first copies it to `finance-before-vN-….db` in the backup folder (kept until you delete it), then upgrades it.
 

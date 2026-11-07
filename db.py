@@ -12,6 +12,7 @@ Debts are wallets too (type "debt", one per person): above zero they owe you, be
 """
 import csv
 import io
+import json
 import re
 import sqlite3
 import threading
@@ -21,6 +22,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 WALLET_TYPES = ("bank", "cash", "crypto", "debt")
 MONEY_TYPES = ("bank", "cash", "crypto")  # wallets that hold your own money (not debts)
 TX_TYPES = ("expense", "income", "transfer", "debt", "adjustment")
+TEMPLATE_TYPES = ("expense", "income", "transfer", "debt")
 CATEGORY_KINDS = ("expense", "income")
 CURRENCY_KINDS = ("fiat", "crypto")
 PRIORITIES = ("high", "medium", "low")
@@ -35,6 +37,8 @@ LIMITS = {
     "description": 200,     # one line of a transaction
     "plan_notes": 2000,
     "entries": 50,          # lines in one transaction
+    "templates": 100,
+    "template_data": 20_000,  # a template's saved form, as JSON text
     "amount": 10_000_000_000,     # one amount, in units: with 8 decimals it still fits in 64 bits
     "rate": 1_000_000_000_000,    # base currency per one unit of a currency
 }
@@ -211,9 +215,22 @@ def migration_4(conn):
     conn.execute("INSERT INTO config (key, value) VALUES ('report_from', ''), ('report_to', '')")
 
 
+def migration_5(conn):
+    # A monthly budget per spending category, in minor units of the base currency (NULL: none),
+    # and saved transaction templates.
+    conn.execute("ALTER TABLE categories ADD COLUMN budget INTEGER")
+    conn.execute("""CREATE TABLE templates (
+        id      INTEGER PRIMARY KEY,
+        name    TEXT NOT NULL,
+        type    TEXT NOT NULL CHECK (type IN ('expense', 'income', 'transfer', 'debt')),
+        data    TEXT NOT NULL,   -- the transaction form as JSON: wallets, lines, amounts (an amount may be empty)
+        created TEXT NOT NULL
+    )""")
+
+
 # Migrations by number: MIGRATIONS[n] brings the database from version n to n + 1 (PRAGMA user_version).
 # Add new ones at the end; never change one that has shipped.
-MIGRATIONS = [migration_1, migration_2, migration_3, migration_4]
+MIGRATIONS = [migration_1, migration_2, migration_3, migration_4, migration_5]
 VARIABLE_AVERAGE_OF = 3  # a varying monthly payment is expected to cost the average of this many last payments
 
 
@@ -945,8 +962,22 @@ def update_category(c, category_id, body):
             c.update("categories", child["id"], {"color": values["color"]})
     if parent_id is not None and parent_id != category["parent_id"]:
         values["color"] = c.row("categories", parent_id)["color"]
+    if "budget" in body:
+        values["budget"] = clean_budget(c.conn, category, body["budget"])
     c.update("categories", category_id, values)
     return {"ok": True}
+
+
+def clean_budget(conn, category, raw):
+    """A monthly limit in the base currency; empty removes it."""
+    if raw in (None, ""):
+        return None
+    if category["kind"] != "expense":
+        raise ApiError("Only spending categories have a budget")
+    budget = to_minor(raw, Rates(conn).base_decimals, "Budget")
+    if budget <= 0:
+        raise ApiError("A budget must be above zero")
+    return budget
 
 
 def delete_category(c, category_id):
@@ -1061,7 +1092,8 @@ def update_config(c, body):
         factor = Decimal(as_rate(body["base_rate"])) if body.get("base_rate") not in (None, "") else Decimal(new["rate"])
         rows = c.conn.execute("SELECT code, rate FROM currencies").fetchall()
         others_set = any(Decimal(r["rate"]) for r in rows if r["code"] not in (base, new["code"]))
-        if not factor and (others_set or int(cfg["cushion_target"])):
+        has_budgets = c.conn.execute("SELECT 1 FROM categories WHERE budget IS NOT NULL").fetchone()
+        if not factor and (others_set or int(cfg["cushion_target"]) or has_budgets):
             raise ApiError(f"Enter how much 1 {new['code']} costs in {base}: the other rates are recounted through it")
         old_decimals = get_currency(c.conn, base)["decimals"]
         with localcontext() as ctx:
@@ -1076,11 +1108,15 @@ def update_config(c, body):
                         short.prec = 12  # plenty for a rate, and readable in the rate field
                         rate = Decimal(row["rate"]) / factor
                 c.update("currencies", row["code"], {"rate": dec_str(rate.normalize())})
-            # The cushion target keeps its value: recount it into the new currency (it is 0 when there is no factor).
-            target = (Decimal(int(cfg["cushion_target"])).scaleb(-old_decimals) / factor).scaleb(new["decimals"]) \
-                if factor else Decimal(0)
-        c.update("config", "cushion_target",
-                 {"value": str(int(target.to_integral_value(rounding=ROUND_HALF_UP)))})
+            # Amounts in the base currency keep their value: recount them into the new one (0 without a factor).
+            def recount(minor):
+                if not factor:
+                    return 0
+                value = (Decimal(minor).scaleb(-old_decimals) / factor).scaleb(new["decimals"])
+                return int(value.to_integral_value(rounding=ROUND_HALF_UP))
+            c.update("config", "cushion_target", {"value": str(recount(int(cfg["cushion_target"])))})
+            for row in c.conn.execute("SELECT id, budget FROM categories WHERE budget IS NOT NULL").fetchall():
+                c.update("categories", row["id"], {"budget": recount(row["budget"]) or None})
         c.update("config", "base_currency", {"value": new["code"]})
         base = new["code"]
     if "cushion_target" in body:
@@ -1370,6 +1406,76 @@ def get_report(conn, query):
 
 # ---------- state: everything the UI shows at start ----------
 
+# ---------- templates ----------
+
+def clean_template(body, current=None):
+    name = as_str(body.get("name", current["name"] if current else None), "Name", LIMITS["name"], required=True)
+    if "data" not in body and current:
+        return {"name": name}
+    data = body.get("data")
+    if not isinstance(data, dict):
+        raise ApiError("A template needs the transaction's form")
+    tx_type = as_choice(data.get("type"), "Type", TEMPLATE_TYPES)
+    text = json.dumps(data, ensure_ascii=False)
+    if len(text) > LIMITS["template_data"]:
+        raise ApiError("This template is too large")
+    return {"name": name, "type": tx_type, "data": text}
+
+
+def create_template(c, body):
+    if c.conn.execute("SELECT COUNT(*) FROM templates").fetchone()[0] >= LIMITS["templates"]:
+        raise ApiError(f"At most {LIMITS['templates']} templates")
+    return {"ok": True, "id": c.insert("templates", {**clean_template(body), "created": now()})}
+
+
+def update_template(c, item_id, body):
+    current = c.row("templates", item_id)
+    if current is None:
+        raise ApiError("Template not found", 404)
+    c.update("templates", item_id, clean_template(body, current))
+    return {"ok": True}
+
+
+def delete_template(c, item_id):
+    """Templates aren't referenced by anything, so they are really deleted."""
+    if c.row("templates", item_id) is None:
+        raise ApiError("Template not found", 404)
+    c.delete("templates", item_id)
+    return {"ok": True}
+
+
+# ---------- capital history ----------
+
+def capital_history(conn, rates, last_month):
+    """Money in wallets at the end of each month, alone and with debts, from the first transaction's month
+    to last_month (or later, for transactions dated ahead). All at the current rates."""
+    rows = conn.execute("""SELECT substr(t.date, 1, 7) AS month, e.wallet_id, SUM(e.amount) AS total
+        FROM entries e JOIN transactions t ON t.id = e.transaction_id AND t.is_deleted = 0
+        GROUP BY month, e.wallet_id ORDER BY month""").fetchall()
+    if not rows:
+        return []
+    wallets = {r["id"]: (r["type"], r["currency"]) for r in conn.execute("SELECT id, type, currency FROM wallets")}
+    changes = {}
+    for r in rows:
+        changes.setdefault(r["month"], []).append((r["wallet_id"], r["total"]))
+    balances = {}
+    history = []
+    month, end = rows[0]["month"], max(rows[-1]["month"], last_month)
+    while month <= end:
+        for wallet_id, total in changes.get(month, ()):
+            balances[wallet_id] = balances.get(wallet_id, 0) + total
+        money = debts = 0
+        for wallet_id, balance in balances.items():
+            wallet_type, currency = wallets[wallet_id]
+            if wallet_type == "debt":
+                debts += rates.to_base(balance, currency)
+            else:
+                money += rates.to_base(balance, currency)
+        history.append({"month": month, "money": rates.fmt_base(money), "net": rates.fmt_base(money + debts)})
+        month = shift_month(month, 1)
+    return history
+
+
 def get_state(conn, day=None):
     day = day or today()
     rates = Rates(conn)
@@ -1424,6 +1530,7 @@ def get_state(conn, day=None):
         "color": r["color"] if r["parent_id"] is None else by_id[r["parent_id"]]["color"],
         "is_active": bool(r["is_active"]), "is_deleted": bool(r["is_deleted"]),
         "count": entry_counts.get(r["id"], 0),
+        "budget": rates.fmt_base(r["budget"]) if r["budget"] is not None else None,
     } for r in category_rows]
 
     # What was really paid for each monthly payment, per transaction, in the base currency, newest first.
@@ -1497,9 +1604,26 @@ def get_state(conn, day=None):
         p["purchase_tx_id"] = purchases.get(p["id"])
 
     month_flows = {"income": 0, "expense": 0}
+    spent = {}  # spending this month by category, in the base currency
     for row in flows(conn, month_from, month_to):
         sign = -1 if row["kind"] == "expense" else 1
-        month_flows[row["kind"]] += sign * rates.to_base(row["total"], row["currency"])
+        amount = sign * rates.to_base(row["total"], row["currency"])
+        month_flows[row["kind"]] += amount
+        if row["kind"] == "expense" and row["category_id"] is not None:
+            spent[row["category_id"]] = spent.get(row["category_id"], 0) + amount
+
+    # Budgets this month: a category's spending counts its subcategories too. Fullest first.
+    budgets = []
+    for r in category_rows:
+        if r["budget"] is None or r["is_deleted"] or r["kind"] != "expense":
+            continue
+        used = sum(total for cid, total in spent.items() if cid == r["id"] or by_id[cid]["parent_id"] == r["id"])
+        budgets.append({"category_id": r["id"], "budget": rates.fmt_base(r["budget"]), "spent": rates.fmt_base(used),
+                        "left": rates.fmt_base(r["budget"] - used), "share": round(used / r["budget"], 4)})
+    budgets.sort(key=lambda b: -b["share"])
+
+    templates = [{"id": r["id"], "name": r["name"], "type": r["type"], "data": json.loads(r["data"])}
+                 for r in conn.execute("SELECT * FROM templates ORDER BY name COLLATE NOCASE, id")]
 
     target = int(cfg["cushion_target"])
     # Without wallets marked for the cushion, all your money counts toward it.
@@ -1538,6 +1662,7 @@ def get_state(conn, day=None):
                    "report_from": cfg["report_from"], "report_to": cfg["report_to"]},
         "currencies": currencies, "wallets": wallets, "categories": categories,
         "recurring": recurring, "planned": planned, "totals": totals,
+        "budgets": budgets, "templates": templates, "history": capital_history(conn, rates, day[:7]),
         "limits": LIMITS,
     }
 
@@ -1560,7 +1685,14 @@ def export_json(conn):
         "plan_savings": rows("SELECT * FROM plan_savings ORDER BY id"),
         "transactions": rows("SELECT * FROM transactions ORDER BY date, id"),
         "entries": rows("SELECT * FROM entries ORDER BY id"),
+        "templates": rows("SELECT * FROM templates ORDER BY id"),
     }
+    for item in data["templates"]:
+        item["data"] = json.loads(item["data"])
+    base_decimals = decimals[data["config"]["base_currency"]]
+    for item in data["categories"]:
+        if item["budget"] is not None:
+            item["budget"] = from_minor(item["budget"], base_decimals)
     for table in ("recurring", "planned"):
         for item in data[table]:
             item["amount"] = from_minor(item["amount"], decimals[item["currency"]])

@@ -192,6 +192,10 @@ ROUTES = [
     ("POST", r"/api/planned/(\d+)/save", change(db.save_for_plan)),
     ("POST", r"/api/planned/(\d+)/buy", change(db.buy_planned)),
     ("POST", r"/api/planned/(\d+)/drop", change(db.drop_planned, takes_body=False)),
+
+    ("POST", r"/api/templates", change(db.create_template)),
+    ("PUT", r"/api/templates/(\d+)", change(db.update_template)),
+    ("DELETE", r"/api/templates/(\d+)", change(db.delete_template, takes_body=False)),
 ]
 
 

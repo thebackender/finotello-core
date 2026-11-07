@@ -2,11 +2,11 @@
 // monthly payment and its payment, plan, its savings and its purchase.
 import * as api from './api.js';
 import {
-  store, act, walletById, walletItems, categoryItems, createCategory, moneyWallets,
+  store, act, walletById, walletItems, categoryById, categoryItems, createCategory, moneyWallets,
   maxlength, WALLET_TYPE_NAMES,
 } from './store.js';
 import { comboHTML, bindCombos, bindCombo } from './combo.js';
-import { confirmDialog } from './dialogs.js';
+import { confirmDialog, promptDialog } from './dialogs.js';
 import {
   fmtMoney, symbolOf, decimalsOf, toMinor, fromMinor, cleanAmount, negate, convert, baseCurrency,
 } from './money.js';
@@ -27,8 +27,9 @@ function openForm(html, { wide = false } = {}) {
   return form;
 }
 
-const header = (title) =>
-  `<header><h2>${esc(title)}</h2><button type="button" class="icon" data-close aria-label="Close">${icon('x')}</button></header>`;
+/** Dialog title and close button; extra goes between them. */
+const header = (title, extra = '') =>
+  `<header><h2>${esc(title)}</h2>${extra}<button type="button" class="icon" data-close aria-label="Close">${icon('x')}</button></header>`;
 
 function footer({ remove = false, extra = '', ok = 'Save' } = {}) {
   return `<footer>
@@ -137,6 +138,33 @@ function txModel(tx, preset) {
 }
 
 const TYPES = [['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer'], ['debt', 'Debt']];
+export const TX_TYPE_NAMES = Object.fromEntries(TYPES);
+
+/** What a template fills in, in a few words: "$3.50 · Food:Eating out", "Card → Cash · $200". */
+export function templateSummary(t) {
+  const d = t.data;
+  const name = (id) => walletById(id)?.name ?? '?';
+  const money = (amount, walletId) => (amount ? fmtMoney(amount, currencyOfWallet(walletId)) : 'any amount');
+  if (d.type === 'expense' || d.type === 'income') {
+    return (d.lines ?? []).map((l) => [money(l.amount, d.wallet_id), categoryById(l.category_id)?.path].filter(Boolean).join(' · ')).join(', ');
+  }
+  if (d.type === 'transfer') return `${name(d.from_id)} → ${name(d.to_id)} · ${money(d.sent, d.from_id)}`;
+  return `${d.direction === 'get' ? 'From' : 'To'} ${name(d.person_id)} · ${money(d.sent, d.wallet_id)}`;
+}
+
+/** A saved template as a preset for a new transaction: wallets and categories deleted since then are dropped. */
+function fromTemplate(t) {
+  const d = structuredClone(t.data);
+  for (const key of ['wallet_id', 'from_id', 'to_id', 'person_id']) {
+    if (d[key] != null && !walletById(d[key])) d[key] = null;
+  }
+  const live = (id) => (id != null && categoryById(id) && !categoryById(id).is_deleted ? id : null);
+  if (Array.isArray(d.lines) && d.lines.length) d.lines = d.lines.map((l) => ({ amount: l.amount ?? '', description: l.description ?? '', category_id: live(l.category_id) }));
+  else delete d.lines;
+  if ('fee_category_id' in d) d.fee_category_id = live(d.fee_category_id);
+  delete d.date;
+  return d;
+}
 
 /**
  * New or existing transaction. preset (new only): {type, wallet_id, from_id, to_id, person_id, direction,
@@ -144,8 +172,15 @@ const TYPES = [['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Trans
  */
 export function openTransaction(tx = null, preset = {}) {
   const m = txModel(tx, preset);
+  const templates = tx ? [] : store.state.templates;
+  const extra = m.type === 'adjustment' ? '' : `
+    ${tx ? `<button type="button" class="ghost" data-repeat title="A new transaction like this one, dated today">${icon('repeat', 14)} Repeat</button>` : ''}
+    <button type="button" class="ghost" data-save-template title="Keep this form to fill a new transaction in one click">${icon('bookmark', 14)} Save as template</button>`;
   const form = openForm(`
-    ${header(tx ? (tx.type === 'adjustment' ? 'Balance adjustment' : 'Edit transaction') : 'New transaction')}
+    ${header(tx ? (tx.type === 'adjustment' ? 'Balance adjustment' : 'Edit transaction') : 'New transaction',
+      templates.length ? `<div class="template-pick" title="Fill the form from a saved template">${icon('bookmark', 14, 'muted')}${comboHTML('template',
+        templates.map((t) => ({ value: t.id, label: t.name, hint: templateSummary(t) })), preset.template_id,
+        { placeholder: 'Templates', noneLabel: null })}</div>` : '')}
     ${m.type === 'adjustment' ? '' : `<div class="segmented type-switch" role="tablist">
       ${TYPES.map(([value, label]) => `<button type="button" data-type="${value}" class="${m.type === value ? 'on' : ''}">${label}</button>`).join('')}
     </div>`}
@@ -154,7 +189,7 @@ export function openTransaction(tx = null, preset = {}) {
       <label>Date ${dateInput('date', m.date)}</label>
       <label>Note <input name="note" value="${esc(m.note)}" placeholder="Shop, reason…" ${maxlength('note')}></label>
     </div>
-    ${footer({ remove: !!tx })}`, { wide: true });
+    ${footer({ remove: !!tx, extra })}`, { wide: true });
   const body = form.querySelector('.tx-body');
 
   // ----- reading the form back into the model -----
@@ -286,7 +321,36 @@ export function openTransaction(tx = null, preset = {}) {
     received.placeholder = convert(cleanAmount(val('sent')) ?? '0', from, to) || '0.00';
   }
 
+  /** The form without its date: for a template, or for a copy. */
+  function snapshot() {
+    collect();
+    const fee = { fee: m.fee, fee_category_id: m.fee_category_id };
+    if (m.type === 'expense' || m.type === 'income') return { type: m.type, note: m.note, wallet_id: m.wallet_id, lines: m.lines };
+    if (m.type === 'transfer') return { type: m.type, note: m.note, from_id: m.from_id, to_id: m.to_id, sent: m.sent, received: m.received, ...fee };
+    return { type: m.type, note: m.note, direction: m.direction, wallet_id: m.wallet_id, person_id: m.person_id, sent: m.sent, received: m.received, ...fee };
+  }
+
+  async function saveTemplate() {
+    const data = snapshot();
+    const guess = m.note || categoryById(m.lines?.[0]?.category_id)?.name || TX_TYPE_NAMES[m.type];
+    const name = await promptDialog({
+      title: 'Save as template', value: guess, ok: 'Save', attrs: maxlength('name'),
+      text: 'It shows at the top of New transaction. Amounts are kept too: clear one first to type it each time.',
+    });
+    if (name) await act(() => api.post('/api/templates', { name, data }), `Template “${name}” saved`);
+  }
+
   form.addEventListener('click', (e) => {
+    if (e.target.closest('[data-repeat]')) {
+      const copy = snapshot();
+      dialog.close();
+      openTransaction(null, copy);
+      return;
+    }
+    if (e.target.closest('[data-save-template]')) {
+      saveTemplate();
+      return;
+    }
     const typeBtn = e.target.closest('[data-type]');
     if (typeBtn && typeBtn.dataset.type !== m.type) {
       collect();
@@ -344,6 +408,13 @@ export function openTransaction(tx = null, preset = {}) {
     e.target.classList.remove('invalid');
   });
   form.addEventListener('change', (e) => {
+    // A template picked: start over from it (the type and the fields may all change).
+    if (e.target.name === 'template' && e.target.value) {
+      const t = store.state.templates.find((x) => x.id === Number(e.target.value));
+      dialog.close();
+      openTransaction(null, { ...fromTemplate(t), template_id: t.id });
+      return;
+    }
     // A different wallet can mean a different currency: redraw to update the symbols and fields.
     if (['wallet_id', 'from_id', 'to_id', 'person_id'].includes(e.target.name)) {
       collect();
@@ -352,9 +423,18 @@ export function openTransaction(tx = null, preset = {}) {
     }
   });
 
+  const picker = form.querySelector('.template-pick .combo');
+  if (picker) bindCombo(picker);
   draw();
   suggestReceived();
-  if (!tx) setTimeout(() => form.querySelector('.tx-body .amount')?.focus(), 0);
+  // From a template: the first empty amount, or Save when everything is filled in (Enter saves).
+  if (!tx) {
+    setTimeout(() => {
+      const amounts = [...form.querySelectorAll('.tx-body .amount')];
+      const target = preset.template_id ? amounts.find((i) => !i.value) ?? form.querySelector('button[type=submit]') : amounts[0];
+      target?.focus();
+    }, 0);
+  }
 
   onSubmit(form, async () => {
     collect();
@@ -490,6 +570,32 @@ export function openWallet(w = null, preset = {}) {
     title: `Delete ${w?.name}?`,
     text: w?.has_transactions ? 'It has transactions, so it can only be archived.' : 'This can’t be undone.',
   }, () => act(() => api.del(`/api/wallets/${w.id}`), 'Deleted'));
+}
+
+// ---------- budget ----------
+
+/** A monthly limit for a spending category. item: a budget from the state, or null for a new one. */
+export function openBudget(item = null) {
+  const category = item ? categoryById(item.category_id) : null;
+  const choices = categoryItems('expense').filter((i) => !categoryById(i.value)?.budget);
+  const form = openForm(`
+    ${header(item ? `Budget: ${category?.path ?? ''}` : 'New budget')}
+    <p class="hint">How much you mean to spend on it in a month, in ${esc(baseCurrency())}. Its subcategories count toward it.</p>
+    ${item ? '' : `<div class="field">Category ${comboHTML('category_id', choices, null,
+      { placeholder: 'Category or Category:Sub', creatable: true, noneLabel: null })}</div>`}
+    <label>Per month ${amountField('budget', item?.budget ?? '', baseCurrency())}</label>
+    ${footer({ remove: !!item })}`);
+  bindCombos(form, { onCreate: (text) => createCategory('expense', text) });
+  (item ? form.querySelector('[name=budget]') : form.querySelector('.combo-input'))?.focus();
+  onSubmit(form, async () => {
+    const id = item ? item.category_id : Number(form.querySelector('[name=category_id]').value) || null;
+    if (!id) return toast('Pick a category', 'error');
+    const budget = readAmount(form.querySelector('[name=budget]'));
+    if (budget === null) return false;
+    return act(() => api.put(`/api/categories/${id}`, { budget }), item ? 'Budget saved' : 'Budget added');
+  });
+  onRemove(form, { title: `Remove the budget of “${category?.path ?? ''}”?`, text: 'The category and its spending stay.', ok: 'Remove' },
+    () => act(() => api.put(`/api/categories/${item.category_id}`, { budget: '' }), 'Budget removed'));
 }
 
 // ---------- monthly payments ----------

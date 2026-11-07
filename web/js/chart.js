@@ -121,3 +121,149 @@ export function segmentedBar(parts, label) {
     ${parts.filter((p) => p.value > 0).map((p) => `<span style="flex:${p.value / total};--c:${paint(p.color)}" title="${esc(p.name)}"></span>`).join('')}
   </div>`;
 }
+
+// ---------- line chart over months ----------
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthLabel = (month, withYear) => `${SHORT_MONTHS[Number(month.slice(5, 7)) - 1]}${withYear ? ` ${month.slice(0, 4)}` : ''}`;
+
+/** Clean steps for an axis: about `count` ticks from lo to hi, on 1 / 2 / 2.5 / 5 × 10^n. */
+function niceTicks(lo, hi, count = 4) {
+  if (lo === hi) hi = lo + 1;
+  const raw = (hi - lo) / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  const ticks = [];
+  for (let v = Math.floor(lo / step) * step; v <= Math.ceil(hi / step) * step + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+  return ticks;
+}
+
+/** Axis ticks, padding and the month / value -> pixel mappings, shared by drawing and hover. */
+function lineGeometry(months, series, width, height) {
+  const all = series.flatMap((s) => s.values);
+  const ticks = niceTicks(Math.min(0, ...all), Math.max(0, ...all));
+  const [lo, hi] = [ticks[0], ticks.at(-1)];
+  const pad = { top: 12, right: 76, bottom: 26, left: 52 };
+  const plotW = Math.max(40, width - pad.left - pad.right);
+  const plotH = height - pad.top - pad.bottom;
+  const x = (i) => pad.left + (months.length === 1 ? plotW / 2 : (i / (months.length - 1)) * plotW);
+  const y = (v) => pad.top + (1 - (v - lo) / (hi - lo)) * plotH;
+  return { ticks, pad, plotW, plotH, x, y };
+}
+
+/**
+ * Lines over months, one value per month and series, on one axis that includes zero.
+ * months: ['2026-09', …]; series: [{name, color (light-theme hex), values: [number]}];
+ * fmtShort: axis and end labels (compact); fmtFull: tooltip and table. width: the container's width in px.
+ * Every series has its value at the line's end; hover / arrow keys show all series for one month;
+ * a table under the chart has every number.
+ */
+export function lineChartHTML({ months, series, width, height = 220, fmtShort, fmtFull, caption }) {
+  const { ticks, pad, plotW, plotH, x, y } = lineGeometry(months, series, width, height);
+
+  const grid = ticks.map((t) => `<line x1="${pad.left}" x2="${pad.left + plotW}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"
+      class="${t === 0 ? 'axis-base' : 'axis-grid'}"/>
+    <text x="${pad.left - 8}" y="${(y(t) + 4).toFixed(1)}" class="axis-label" text-anchor="end">${esc(fmtShort(t))}</text>`).join('');
+
+  // Month labels that fit side by side; the year with the first one and with every January.
+  const every = Math.max(1, Math.ceil(months.length / Math.max(1, Math.floor(plotW / 64))));
+  const xLabels = months.map((m, i) => (i % every && i !== months.length - 1 ? '' : `<text x="${x(i).toFixed(1)}" y="${height - 8}"
+      class="axis-label" text-anchor="middle">${esc(monthLabel(m, i === 0 || m.endsWith('-01')))}</text>`)).join('');
+
+  const lines = series.map((s) => {
+    const d = s.values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join('');
+    return `<path d="${d}" class="series-line" stroke="${paint(s.color)}"/>
+      ${months.length === 1 ? `<circle cx="${x(0)}" cy="${y(s.values[0])}" r="4" fill="${paint(s.color)}" class="series-dot"/>` : ''}`;
+  }).join('');
+
+  // Values at the line ends; a label that would sit on top of the one before it is left to the tooltip.
+  const placed = [];
+  const endLabels = series.map((s) => {
+    const ly = y(s.values.at(-1));
+    if (placed.some((p) => Math.abs(p - ly) < 14)) return '';
+    placed.push(ly);
+    return `<text x="${x(months.length - 1) + 8}" y="${(ly + 4).toFixed(1)}" class="end-label">${esc(fmtShort(s.values.at(-1)))}</text>`;
+  }).join('');
+
+  const table = `<details class="chart-table"><summary>Table</summary><div class="table-wrap"><table class="data">
+    <thead><tr><th>Month</th>${series.map((s) => `<th class="num">${esc(s.name)}</th>`).join('')}</tr></thead>
+    <tbody>${months.map((m, i) => `<tr><td>${esc(monthLabel(m, true))}</td>${series.map((s) => `<td class="num">${esc(fmtFull(s.values[i]))}</td>`).join('')}</tr>`).reverse().join('')}</tbody>
+  </table></div></details>`;
+
+  return `<div class="line-wrap">
+    ${series.length > 1 ? `<div class="line-legend">${series.map((s) => `<span><i class="line-key" style="--c:${paint(s.color)}"></i>${esc(s.name)}</span>`).join('')}</div>` : ''}
+    <div class="line-plot">
+      <svg class="line-chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" tabindex="0" aria-label="${esc(caption)}">
+        ${grid}${xLabels}${lines}${endLabels}
+        <line class="crosshair" y1="${pad.top}" y2="${pad.top + plotH}" hidden/>
+        <g class="hover-dots"></g>
+        <rect class="hit" x="${pad.left - 12}" y="0" width="${plotW + 24}" height="${height}" fill="transparent"/>
+      </svg>
+      <div class="chart-tip" role="status" hidden></div>
+    </div>
+    ${table}
+  </div>`;
+}
+
+/** Crosshair and tooltip for a chart drawn with lineChartHTML inside root (same arguments). */
+export function bindLineChart(root, { months, series, width, height = 220, fmtFull }) {
+  const svg = root.querySelector('.line-chart');
+  if (!svg) return;
+  const tip = root.querySelector('.line-plot .chart-tip');
+  const cross = svg.querySelector('.crosshair');
+  const dots = svg.querySelector('.hover-dots');
+  const { pad, plotW, x, y } = lineGeometry(months, series, width, height);
+  let current = null;
+
+  function show(i) {
+    current = i;
+    const cx = x(i);
+    cross.setAttribute('x1', cx);
+    cross.setAttribute('x2', cx);
+    cross.removeAttribute('hidden');
+    dots.innerHTML = series.map((s) => `<circle cx="${cx}" cy="${y(s.values[i])}" r="4.5" fill="${paint(s.color)}" class="series-dot"/>`).join('');
+    tip.replaceChildren();
+    const title = document.createElement('div');
+    title.className = 'tip-title';
+    title.textContent = monthLabel(months[i], true);
+    tip.append(title);
+    for (const s of series) {
+      const row = document.createElement('div');
+      row.className = 'tip-row';
+      const key = document.createElement('i');
+      key.className = 'line-key';
+      key.style.setProperty('--c', paint(s.color));
+      const value = document.createElement('b');
+      value.textContent = fmtFull(s.values[i]);
+      const name = document.createElement('span');
+      name.textContent = s.name;
+      row.append(key, value, name);
+      tip.append(row);
+    }
+    tip.hidden = false;
+    const left = cx + 12 + tip.offsetWidth > width ? cx - 12 - tip.offsetWidth : cx + 12;
+    tip.style.left = `${Math.max(0, left)}px`;
+    tip.style.top = `${pad.top}px`;
+  }
+  function hide() {
+    current = null;
+    cross.setAttribute('hidden', '');
+    dots.innerHTML = '';
+    tip.hidden = true;
+  }
+  const nearest = (clientX) => {
+    const box = svg.getBoundingClientRect();
+    const px = clientX - box.left;
+    if (months.length === 1) return 0;
+    return Math.max(0, Math.min(months.length - 1, Math.round(((px - pad.left) / plotW) * (months.length - 1))));
+  };
+  svg.addEventListener('pointermove', (e) => show(nearest(e.clientX)));
+  svg.addEventListener('pointerleave', hide);
+  svg.addEventListener('focus', () => show(months.length - 1));
+  svg.addEventListener('blur', hide);
+  svg.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    show(Math.max(0, Math.min(months.length - 1, (current ?? months.length - 1) + (e.key === 'ArrowLeft' ? -1 : 1))));
+  });
+}
