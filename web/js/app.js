@@ -5,12 +5,13 @@ import { esc, today, addDays, fmtDate, fmtTs } from './util.js';
 import { toggleTheme } from './theme.js';
 import * as overview from './views/overview.js';
 import * as transactions from './views/transactions.js';
-import * as reports from './views/reports.js';
 import * as plans from './views/plans.js';
 import * as wallets from './views/wallets.js';
 import * as settings from './views/settings.js';
 
-const VIEWS = { overview, transactions, reports, plans, wallets, settings };
+const VIEWS = { overview, transactions, plans, wallets, settings };
+// Old links still work: Reports became part of Overview.
+const ALIASES = { reports: 'overview' };
 const main = document.getElementById('view');
 const undoBtn = document.getElementById('undo-btn');
 const backupBtn = document.getElementById('backup-btn');
@@ -35,7 +36,7 @@ let current = 'overview';
 function route() {
   if (!store.state) return;
   const hash = location.hash.slice(1);
-  const name = VIEWS[hash] ? hash : 'overview';
+  const name = VIEWS[hash] ? hash : ALIASES[hash] ?? 'overview';
   current = name;
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === `#${name}`));
   // A fresh container each time, so the old view's event listeners go away with it.

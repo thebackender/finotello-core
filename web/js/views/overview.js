@@ -1,12 +1,13 @@
-// Overview tab: how much money you have, this month's flow, monthly payments, plans and the safety cushion.
-import * as api from '../api.js';
+// Overview tab: how much money you have, monthly payments, plans and the safety cushion,
+// then income and spending for a period (views/reports.js).
 import { store } from '../store.js';
 import { openWallet, openPay } from '../editor.js';
-import { fmtBase, fmtBaseNum, toNum } from '../money.js';
+import { fmtBase, toNum } from '../money.js';
 import { meter, segmentedBar } from '../chart.js';
-import { esc, freshBox, monthRange, fmtMonth, paint, PALETTE } from '../util.js';
+import { esc, freshBox, fmtMonth, paint, PALETTE } from '../util.js';
 import { icon, WALLET_ICONS } from '../icons.js';
-import { missingRatesBanner, categoryRanking } from './parts.js';
+import { missingRatesBanner } from './parts.js';
+import { renderReports } from './reports.js';
 
 // Wallet types take the first three categorical slots, always in this order.
 const TYPE_PARTS = [
@@ -27,16 +28,12 @@ function welcome() {
   </section>`;
 }
 
-const tile = (label, value, { hint = '', cls = '' } = {}) =>
-  `<div class="tile ${cls}"><div class="tile-label">${esc(label)}</div><div class="tile-value">${esc(value)}</div>${hint ? `<div class="tile-hint">${hint}</div>` : ''}</div>`;
-
 export function render(view) {
   const root = freshBox(view);
   const s = store.state;
   const t = s.totals;
   const month = s.month;
   const hasWallets = s.wallets.some((w) => w.type !== 'debt');
-  const balance = toNum(t.month_income) - toNum(t.month_expense);
   const parts = TYPE_PARTS.map((p) => ({ ...p, value: toNum(t.by_type[p.type]) }));
   const hasDebts = toNum(t.owed_to_me) || toNum(t.i_owe);
   const unpaid = s.recurring.filter((r) => r.is_active && !r.paid_tx_id);
@@ -57,6 +54,10 @@ export function render(view) {
             ${toNum(t.i_owe) ? `<span>You owe <b>${esc(fmtBase(t.i_owe))}</b></span>` : ''}
             <span>With debts <b>${esc(fmtBase(t.net))}</b></span>
           </div>` : ''}
+          <div class="free-line" title="Money in your wallets minus the safety cushion and what is saved for plans">
+            Free money <b class="${toNum(t.free) < 0 ? 'neg' : ''}">${esc(fmtBase(t.free))}</b>
+            <span class="muted">after the cushion and plan savings</span>
+          </div>
         </div>
         <div class="money-split">
           ${segmentedBar(parts, 'Money by wallet type')}
@@ -66,16 +67,6 @@ export function render(view) {
           </ul>
         </div>
       </section>
-
-      <div class="tiles">
-        ${tile(`Income · ${fmtMonth(month)}`, fmtBase(t.month_income))}
-        ${tile(`Spent · ${fmtMonth(month)}`, fmtBase(t.month_expense))}
-        ${tile('Left over this month', fmtBaseNum(balance, { sign: true }), { cls: balance < 0 ? 'negative' : '' })}
-        ${tile('Free money', fmtBase(t.free), {
-          cls: toNum(t.free) < 0 ? 'negative' : '',
-          hint: 'After the cushion and money saved for plans',
-        })}
-      </div>
 
       <div class="cards-3">
         <section class="card">
@@ -114,10 +105,7 @@ export function render(view) {
         </section>
       </div>
 
-      <section class="card spending">
-        <header class="card-head"><h3>Spending by category · ${fmtMonth(month)}</h3><a href="#reports">Reports</a></header>
-        <div class="spending-body muted small">Loading…</div>
-      </section>
+      <div class="report-part"></div>
     </div>`;
 
   root.addEventListener('click', (e) => {
@@ -126,17 +114,5 @@ export function render(view) {
     if (pay) openPay(s.recurring.find((r) => r.id === Number(pay.dataset.pay)));
   });
 
-  const [from, to] = monthRange(month);
-  api.get('/api/report', { from, to }).then((report) => {
-    const box = root.querySelector('.spending-body');
-    if (!box) return;
-    box.classList.remove('muted', 'small');
-    box.innerHTML = report.expense.groups.length
-      ? categoryRanking(report.expense, { limit: 6 })
-      : '<p class="muted small">No spending recorded this month.</p>';
-  }).catch((e) => {
-    const box = root.querySelector('.spending-body');
-    if (box) box.textContent = e.message;
-  });
+  renderReports(root.querySelector('.report-part'));
 }
-

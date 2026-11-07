@@ -25,16 +25,15 @@ Tests: `python3 -m unittest discover tests`
 
 | Key | Tab | What it does |
 |---|---|---|
-| 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe; income, spending and what's left this month; free money (after the cushion and plan savings); monthly payments, plans and the cushion at a glance; this month's spending by category |
+| 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe; free money (after the cushion and plan savings); monthly payments, plans and the cushion at a glance. Below, **Income and spending** for a period (this month, last month, 3 months, this year, 12 months, custom): spending by category as a pie (the six largest; smaller ones fold into "Other"; the list next to it gives each amount and share) and income by source as bars, each with its total. Click a category or "Other" to see what's inside. Changing the period redraws only this part |
 | 2 | Transactions | Everything by day, a month at a time or all time. Filter by wallet, category (with its subcategories) or type; search notes and line descriptions. Click a transaction to edit or delete it |
-| 3 | Reports | Spending by category and income by source for a period (this month, last month, 3 months, this year, 12 months, custom). Click a category to see its subcategories. Income vs spending by month for the 12 months up to the period's end, with a table view |
-| 4 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense). **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside, it stays in your wallets but no longer counts as free), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
-| 5 | Wallets | Wallets by type with their balance (and its value in the base currency). **Check** compares with the real balance and records the difference. **Debts**: one entry per person, Give / Get money |
-| 6 | Settings | Base currency and exchange rates, spending categories and income sources, theme, export to CSV / JSON |
+| 3 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense). **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside, it stays in your wallets but no longer counts as free), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
+| 4 | Wallets | Wallets by type with their balance (and its value in the base currency). **Check** compares with the real balance and records the difference. **Debts**: one entry per person, Give / Get money |
+| 5 | Settings | Base currency and exchange rates, spending categories and income sources, theme, export to CSV / JSON |
 
 ## Keyboard shortcuts
 
-- `1`–`6`: switch tabs
+- `1`–`5`: switch tabs
 - `N`: new transaction (in Transactions with a wallet filter, from that wallet)
 - `Ctrl+Z`: undo the last change (up to 30 steps, kept in the database, so they survive a restart)
 - `Esc`: close a dialog or a list
@@ -127,6 +126,6 @@ web/js/app.js          tabs and keyboard shortcuts
 web/js/store.js        state and API calls
 web/js/money.js        formatting and exact sums
 web/js/editor.js       dialogs: transaction, wallet, balance check, payment, plan
-web/js/chart.js        column chart, meter, segmented bar
-web/js/views/*.js      one file per tab
+web/js/chart.js        pie, meter, segmented bar
+web/js/views/*.js      one file per tab; reports.js is the income and spending part of Overview
 ```
