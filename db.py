@@ -630,7 +630,7 @@ def update_wallet(c, wallet_id, body):
     if "currency" in body:
         values["currency"] = get_currency(c.conn, as_code(body["currency"]))["code"]
         if has_entries and values["currency"] != wallet["currency"]:
-            raise ApiError("The currency can't change once a wallet has transactions")
+            recurrency_entries(c, wallet, values["currency"])
     if "color" in body:
         values["color"] = as_color(body["color"])
     if "note" in body:
@@ -643,6 +643,28 @@ def update_wallet(c, wallet_id, body):
         raise ApiError("A debt can't count toward the cushion")
     c.update("wallets", wallet_id, values)
     return {"ok": True}
+
+
+def recurrency_entries(c, wallet, code):
+    """Fix a wallet's currency picked by mistake: its amounts keep their numbers, now in the new currency
+    (1 000 RUB becomes 1 000 USD). Only when every transaction of the wallet touches this wallet alone:
+    a transfer or debt with another wallet would no longer add up on the other side."""
+    shared = c.conn.execute("""SELECT 1 FROM entries e JOIN entries o ON o.transaction_id = e.transaction_id
+                               WHERE e.wallet_id = ? AND o.wallet_id != ? LIMIT 1""", (wallet["id"], wallet["id"])).fetchone()
+    if shared:
+        raise ApiError("This wallet has transfers or debts with other wallets, so its currency can't change. "
+                       "Create a new wallet in the right currency and move the money with a transfer")
+    old_decimals = get_currency(c.conn, wallet["currency"])["decimals"]
+    new_decimals = get_currency(c.conn, code)["decimals"]
+    shift = 10 ** abs(new_decimals - old_decimals)
+    for e in c.conn.execute("SELECT id, amount FROM entries WHERE wallet_id = ?", (wallet["id"],)).fetchall():
+        if new_decimals >= old_decimals:
+            amount = e["amount"] * shift
+        elif e["amount"] % shift:
+            raise ApiError(f"Some amounts have more digits after the point than {code} allows ({new_decimals})")
+        else:
+            amount = e["amount"] // shift
+        c.update("entries", e["id"], {"amount": amount})
 
 
 def delete_wallet(c, wallet_id):
@@ -1418,6 +1440,9 @@ def get_state(conn, day=None):
     } for r in conn.execute("SELECT * FROM currencies ORDER BY code = ? DESC, kind, code", (base,))]
 
     with_entries = {row[0] for row in conn.execute("SELECT DISTINCT wallet_id FROM entries")}
+    # Wallets sharing a transaction with another wallet (a transfer, a debt): their currency is fixed.
+    shared = {row[0] for row in conn.execute("""SELECT DISTINCT e.wallet_id FROM entries e
+        JOIN entries o ON o.transaction_id = e.transaction_id AND o.wallet_id != e.wallet_id""")}
     wallets = []
     totals_by_type = {t: 0 for t in WALLET_TYPES}
     owed_to_me = i_owe = cushion = 0
@@ -1430,6 +1455,7 @@ def get_state(conn, day=None):
             "note": r["note"], "is_cushion": bool(r["is_cushion"]), "is_archived": bool(r["is_archived"]),
             "created": r["created"], "balance": rates.fmt(balance, r["currency"]),
             "balance_base": rates.fmt_base(in_base), "has_transactions": r["id"] in with_entries,
+            "currency_fixed": r["id"] in shared,
         })
         if r["type"] == "debt":
             if in_base > 0:

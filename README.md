@@ -62,7 +62,7 @@ If a friend pays for your lunch, record an expense from the friend: it counts as
 "+ Create" makes whatever is missing. Reports count a category together with its subcategories.
 Deleting a category keeps it on old transactions (shown struck through); **Merge into…** moves its transactions to another one.
 
-**Currencies.** Each wallet has one currency, set when you create it. Totals are in the base currency, at the rates you
+**Currencies.** Each wallet has one currency. If you picked the wrong one, change it in the wallet's editor: every amount keeps its number in the new currency (1 000 ₽ becomes $1 000). That works while the wallet's transactions involve it alone (starting balance, expenses, income, balance checks); once it has transfers or debts with other wallets, the currency is fixed, and you move the money to a new wallet with a transfer. Totals are in the base currency, at the rates you
 enter in Settings (one unit of a currency = so much of the base currency). There is one current rate per currency:
 when you change it, all totals and reports are recounted. A currency in use with no rate counts as zero, and a warning says so.
 Changing the base currency recounts all rates through the new one.

@@ -132,10 +132,30 @@ class Wallets(Base):
         self.w("Delete", db.delete_wallet, empty)
         self.assertEqual([w["id"] for w in self.state()["wallets"]], [card])
 
-    def test_currency_locked_once_used(self):
-        card = self.wallet("Card", balance="1")
+    def test_fix_currency_picked_by_mistake(self):
+        card = self.wallet("Card", balance="1000")  # meant to be RUB
+        self.tx("expense", [{"wallet_id": card, "amount": "-12.50"}])
+        self.w("Edit", db.update_wallet, card, {"currency": "RUB"})
+        self.assertEqual(self.balance(card), "987.50")
+        self.w("Edit", db.update_wallet, card, {"currency": "BTC"})  # more decimals: amounts scale up
+        self.assertEqual(self.balance(card), "987.50000000")
+        self.db.undo()
+        self.db.undo()
+        self.assertEqual(self.balance(card), "987.50")
+
+    def test_currency_fixed_when_shared_with_other_wallets(self):
+        card, cash = self.wallet("Card", balance="100"), self.wallet("Cash")
+        self.tx("transfer", [{"wallet_id": card, "amount": "-50"}, {"wallet_id": cash, "amount": "50"}])
         with self.assertRaises(ApiError):
             self.w("Edit", db.update_wallet, card, {"currency": "EUR"})
+
+    def test_currency_with_fewer_decimals_must_fit(self):
+        coins = self.wallet("Coins", currency="BTC", balance="0.5")
+        self.w("Edit", db.update_wallet, coins, {"currency": "RUB"})
+        self.assertEqual(self.balance(coins), "0.50")
+        odd = self.wallet("Odd", currency="BTC", balance="0.123")
+        with self.assertRaises(ApiError):
+            self.w("Edit", db.update_wallet, odd, {"currency": "USD"})
 
     def test_names_are_unique(self):
         self.wallet("Card")

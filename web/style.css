@@ -167,6 +167,8 @@ input[type="checkbox"] {
   width: 16px; height: 16px; margin: 0; flex: none;
   accent-color: var(--primary); cursor: pointer;
 }
+select:disabled, input:disabled:not([type="checkbox"]) { opacity: 0.55; cursor: not-allowed; background-color: var(--muted); }
+.currency-hint { margin: -6px 0 0; }
 input.invalid { border-color: var(--destructive) !important; box-shadow: 0 0 0 3px rgb(220 38 38 / 0.15) !important; }
 label.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
 

@@ -424,7 +424,7 @@ export function setupColorPicker() {
 /** New or existing wallet; preset (new only): {type, currency}. A person (type "debt") is a wallet too. */
 export function openWallet(w = null, preset = {}) {
   const type = w?.type ?? preset.type ?? 'bank';
-  const locked = !!w?.has_transactions;
+  const hasTransactions = !!w?.has_transactions;
   const isPerson = type === 'debt';
   const types = ['bank', 'cash', 'crypto'];
   const form = openForm(`
@@ -432,9 +432,12 @@ export function openWallet(w = null, preset = {}) {
     <label>Name <input name="name" value="${esc(w?.name ?? '')}" placeholder="${isPerson ? 'Ivan' : 'T-Bank card'}" required ${maxlength('name')}></label>
     <div class="grid">
       ${isPerson ? '' : `<label>Type <select name="type">${types.map((t) => opt(t, WALLET_TYPE_NAMES[t], type)).join('')}</select></label>`}
-      <label>Currency <select name="currency" ${locked ? 'disabled title="Fixed once the wallet has transactions"' : ''}>
-        ${currencyOptions(w?.currency ?? preset.currency ?? baseCurrency())}</select></label>
+      <label>Currency <select name="currency" ${w?.currency_fixed ? 'disabled' : ''}>${currencyOptions(w?.currency ?? preset.currency ?? baseCurrency())}</select></label>
     </div>
+    ${w?.currency_fixed ? `<p class="field-hint currency-hint">The currency is fixed: this ${isPerson ? 'debt' : 'wallet'} has transfers or debts with other wallets.
+      To hold money in another currency, create a new wallet and make a transfer.</p>` : ''}
+    ${hasTransactions && !w.currency_fixed ? `<p class="field-hint currency-hint" hidden>Changing the currency keeps every amount of this wallet as the same number, now in the new currency.
+      Use it to fix a currency picked by mistake; to exchange money, make a transfer to another wallet.</p>` : ''}
     ${w ? '' : `<label>${isPerson ? 'They owe you now' : 'Balance now'}
       ${amountField('balance', '', w?.currency ?? preset.currency ?? baseCurrency())}
       <span class="field-hint">${isPerson ? 'Below zero if you owe them. Leave empty if you are even.' : 'Recorded as the starting balance. Leave empty for zero.'}</span></label>`}
@@ -449,6 +452,8 @@ export function openWallet(w = null, preset = {}) {
   form.querySelector('[name=currency]').addEventListener('change', (e) => {
     const cur = form.querySelector('[data-cur-of=balance]');
     if (cur) cur.textContent = symbolOf(e.target.value);
+    const hint = form.querySelector('.currency-hint');
+    if (hint && w) hint.hidden = e.target.value === w.currency;
   });
   if (!w) form.querySelector('[name=name]').focus();
 
@@ -460,9 +465,17 @@ export function openWallet(w = null, preset = {}) {
       payload.is_cushion = !!data.is_cushion;
       if (data.color) payload.color = data.color;
     } else payload.type = 'debt';
-    if (!locked) payload.currency = data.currency;
+    if (!w?.currency_fixed) payload.currency = data.currency;
     if (w) {
       payload.is_archived = !!data.is_archived;
+      if (hasTransactions && payload.currency && payload.currency !== w.currency) {
+        const ok = await confirmDialog({
+          title: `Switch ${w.name} to ${data.currency}?`,
+          text: `Its balance ${fmtMoney(w.balance, w.currency)} becomes ${fmtMoney(w.balance, data.currency)}: every amount keeps its number. Ctrl+Z undoes it.`,
+          ok: `Switch to ${data.currency}`,
+        });
+        if (!ok) return false;
+      }
       return act(() => api.put(`/api/wallets/${w.id}`, payload), 'Saved');
     }
     const balance = data.balance?.trim();
@@ -604,7 +617,8 @@ export function openPlanned(item = null) {
     <label>What <input name="name" value="${esc(item?.name ?? '')}" placeholder="New laptop, dental treatment…" ${maxlength('name')}></label>
     <div class="grid">
       <label>Expected cost ${amountField('amount', item?.amount ?? '', currency)}</label>
-      <label>Currency <select name="currency" ${locked ? 'disabled title="Money is saved for it in this currency"' : ''}>${currencyOptions(currency)}</select></label>
+      <label>Currency <select name="currency" ${locked ? 'disabled' : ''}>${currencyOptions(currency)}</select>
+        ${locked ? '<span class="field-hint">Fixed: money is saved for it in this currency. Take it back to change.</span>' : ''}</label>
       <label>Priority <select name="priority">${Object.entries(PRIORITY_NAMES).map(([v, n]) => opt(v, n, item?.priority ?? 'medium')).join('')}</select></label>
       <label>By <span class="muted">(optional)</span> ${dateInput('due', item?.due)}</label>
     </div>
