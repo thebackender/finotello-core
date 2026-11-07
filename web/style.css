@@ -600,12 +600,21 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
 
 /* ====================================================================== plans */
 
-.after-pay { margin-top: 12px; }
-.after-pay [data-after-payments][aria-expanded="true"] { background: var(--field-hover); }
-.after-pay-body { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-field); background: var(--field); font-size: 13px; }
+.after-pay-btn { margin-top: 14px; }
+.after-pay-btn[aria-expanded="true"] { background: var(--field-hover); }
+.money > .after-pay-body { grid-column: 1 / -1; margin-top: -12px; }
+.after-pay-body { padding: 12px 14px; border-radius: var(--r-field); background: var(--field); font-size: 13px; }
 .after-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; font-variant-numeric: tabular-nums; }
 .after-sum b.fg, .after-wallets b.fg { color: var(--foreground); }
 .after-wallets { margin-top: 8px; }
+.after-pay-body h4 { margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
+.after-wallets label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 400; }
+.after-wallets label.check input { margin: 0; }
+.after-wallets li.skipped label { color: var(--muted-foreground); }
+.after-wallets li.skipped .num { color: var(--muted-foreground); text-decoration: line-through; text-decoration-thickness: 1px; }
+.after-wallets li.skipped .num .muted { text-decoration: none; display: inline-block; margin-left: 8px; }
+.after-pay-body > p { margin: 10px 0 0; }
+.after-pay-body ul + .after-sum { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .after-wallets li { gap: 10px; }
 .after-wallets .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
 

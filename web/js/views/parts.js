@@ -5,6 +5,7 @@ import { fmtBase, fmtBaseNum, fmtMoney, toNum, convert, decimalsOf } from '../mo
 import { esc, paint, PALETTE, fmtMonth } from '../util.js';
 import { icon } from '../icons.js';
 import { secret } from '../privacy.js';
+import { getPrefs, setPrefs } from '../prefs.js';
 
 /**
  * One category budget this month: name, spent of the limit, a bar, and what is left (or over).
@@ -84,23 +85,47 @@ document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-after-payments]');
   if (!btn) return;
   afterOpen = !afterOpen;
-  document.querySelectorAll('.after-pay').forEach((box) => {
-    box.querySelector('.after-pay-body').hidden = !afterOpen;
-    box.querySelector('[data-after-payments]').setAttribute('aria-expanded', String(afterOpen));
-  });
+  document.querySelectorAll('.after-pay-body').forEach((body) => { body.hidden = !afterOpen; });
+  document.querySelectorAll('[data-after-payments]').forEach((b) => b.setAttribute('aria-expanded', String(afterOpen)));
+});
+
+// Plans left out of the count: their ids, kept in data/settings.json.
+const skippedPlans = () => new Set(getPrefs('after_pay', { skip: [] }).skip);
+
+document.addEventListener('change', (e) => {
+  const box = e.target.closest('[data-plan-toggle]');
+  if (!box) return;
+  const skip = skippedPlans();
+  const id = Number(box.dataset.planToggle);
+  if (box.checked) skip.delete(id); else skip.add(id);
+  // Forget plans that are closed or gone, so the list doesn't grow.
+  const open = new Set(store.state.planned.filter((p) => p.status === 'open').map((p) => p.id));
+  setPrefs('after_pay', { skip: [...skip].filter((x) => open.has(x)) });
+  const body = document.querySelector('.after-pay-body');
+  if (body) body.outerHTML = afterPayments();
+  document.querySelector(`[data-plan-toggle="${id}"]`)?.focus();
 });
 
 /**
- * A button and, under it, how much money is left once the monthly payments not yet paid this month are paid:
- * in total, and on each wallet they are usually paid from. Varying payments count at their usual amount.
- * Empty when everything is paid.
+ * How much money is left (opened by afterPaymentsButton): first once the monthly payments not yet paid this month are paid
+ * (in total, and on each wallet they are usually paid from; varying payments count at their usual amount),
+ * then after each open plan in turn, in the order of the Plans tab (priority, then date).
+ * Empty when there is nothing to pay and nothing planned.
  */
+const hasSomethingAhead = (s) => s.recurring.some((r) => r.is_active && !r.paid_tx_id) || s.planned.some((p) => p.status === 'open');
+
+/** The button that opens it; empty when there is nothing to pay and nothing planned. */
+export const afterPaymentsButton = () => (hasSomethingAhead(store.state)
+  ? `<button type="button" class="small after-pay-btn" data-after-payments aria-expanded="${afterOpen}">${icon('calendarCheck', 14)} What will be left</button>` : '');
+
 export function afterPayments() {
   const s = store.state;
   const unpaid = s.recurring.filter((r) => r.is_active && !r.paid_tx_id);
-  if (!unpaid.length) return '';
+  const plans = s.planned.filter((p) => p.status === 'open');
+  if (!hasSomethingAhead(s)) return '';
   const toPay = unpaid.reduce((sum, r) => sum + toNum(r.expected_base), 0);
-  const after = toNum(s.totals.money) - toPay;
+  const now = toNum(s.totals.money);
+  const after = now - toPay;
   const money = (n, cls = '') => `<b class="${n < 0 ? 'neg' : cls}">${secret(esc(fmtBaseNum(n)))}</b>`;
 
   // By wallet: each payment in the wallet's currency (converted at your rates when they differ).
@@ -124,15 +149,32 @@ export function afterPayments() {
   const noWalletRow = noWallet.length ? `<li><span class="grow"><span class="muted">No wallet set:</span> <span class="muted small">${esc(noWallet.map((r) => r.name).join(', '))}</span></span>
       <span class="num muted">${esc(fmtBaseNum(noWallet.reduce((sum, r) => sum + toNum(r.expected_base), 0)))}</span></li>` : '';
 
-  return `<div class="after-pay">
-    <button type="button" class="small" data-after-payments aria-expanded="${afterOpen}">${icon('calendarCheck', 14)} If I pay the rest</button>
-    <div class="after-pay-body" ${afterOpen ? '' : 'hidden'}>
-      <div class="after-sum">
-        <span>Money now ${money(toNum(s.totals.money))}</span>
-        <span>Left to pay in ${esc(fmtMonth(s.month))} <b>${esc(fmtBaseNum(toPay))}</b> <span class="muted">(${unpaid.length} payment${unpaid.length === 1 ? '' : 's'}${unpaid.some((r) => r.is_variable) ? ', ~ varying at their usual amount' : ''})</span></span>
-        <span>After paying ${money(after, 'fg')}</span>
-      </div>
-      <ul class="list compact after-wallets">${walletRows}${noWalletRow}</ul>
-    </div>
-  </div>`;
+  // Then the plans, one after another: what is left after each. Unticked ones are left out.
+  const skip = skippedPlans();
+  let left = after;
+  const planRows = plans.map((p) => {
+    const on = !skip.has(p.id);
+    if (on) left -= toNum(p.amount_base);
+    const own = p.currency !== s.config.base_currency ? ` <span class="muted small">(${esc(fmtMoney(p.amount, p.currency))})</span>` : '';
+    return `<li class="${on ? '' : 'skipped'}"><label class="grow check"><input type="checkbox" data-plan-toggle="${p.id}" ${on ? 'checked' : ''}>
+        ${esc(p.name)} <span class="tag prio ${p.priority}">${esc(p.priority[0].toUpperCase() + p.priority.slice(1))}</span></label>
+      <span class="num">−${esc(fmtBaseNum(toNum(p.amount_base)))}${own}${on ? ` → ${money(left)}` : ' <span class="muted">not counted</span>'}</span></li>`;
+  }).join('');
+  const counted = plans.filter((p) => !skip.has(p.id));
+  const plansTotal = counted.reduce((sum, p) => sum + toNum(p.amount_base), 0);
+
+  return `<div class="after-pay-body" ${afterOpen ? '' : 'hidden'}>
+      <div class="after-sum"><span>Money now ${money(now)}</span></div>
+      ${unpaid.length ? `<h4>Monthly payments</h4>
+        <div class="after-sum">
+          <span>Left to pay in ${esc(fmtMonth(s.month))} <b>${esc(fmtBaseNum(toPay))}</b> <span class="muted">(${unpaid.length} payment${unpaid.length === 1 ? '' : 's'}${unpaid.some((r) => r.is_variable) ? ', ~ varying at their usual amount' : ''})</span></span>
+          <span>After paying ${money(after, 'fg')}</span>
+        </div>
+        <ul class="list compact after-wallets">${walletRows}${noWalletRow}</ul>`
+        : `<p class="muted">${icon('check', 13)} Monthly payments are all paid for ${esc(fmtMonth(s.month))}.</p>`}
+      ${plans.length ? `<h4>Then the plans <span class="muted">(by priority; untick one to leave it out)</span></h4>
+        <ul class="list compact after-wallets">${planRows}</ul>
+        <div class="after-sum"><span>Plans <b>${esc(fmtBaseNum(plansTotal))}</b> <span class="muted">(${counted.length} of ${plans.length})</span></span>
+          <span>After payments and ${counted.length === plans.length ? 'all plans' : 'the ticked plans'} ${money(after - plansTotal, 'fg')}</span></div>` : ''}
+    </div>`;
 }
