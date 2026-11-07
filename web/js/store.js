@@ -4,7 +4,7 @@ import { setCurrencies, fmtBase } from './money.js';
 import { toast } from './util.js';
 
 /** The last /api/state; views read it directly (store.state.wallets, …). */
-export const store = { state: null, canUndo: false, lastBackup: null };
+export const store = { state: null, lastBackup: null };
 
 const listeners = new Set();
 export const subscribe = (fn) => listeners.add(fn);
@@ -15,7 +15,6 @@ let categories = new Map();
 export async function reload() {
   const state = await api.getState();
   store.state = state;
-  store.canUndo = state.can_undo;
   store.lastBackup = state.last_backup ?? null; // {time, file, dir}; no time when there is no backup yet
   setCurrencies(state.currencies, state.config.base_currency);
   wallets = new Map(state.wallets.map((w) => [w.id, w]));
@@ -39,11 +38,6 @@ export async function act(call, okMessage) {
   const message = typeof okMessage === 'function' ? okMessage(result) : okMessage;
   if (message) toast(message);
   return result;
-}
-
-export async function undo() {
-  if (!store.canUndo) return;
-  await act(() => api.post('/api/undo'), (r) => `Undone: ${r.undone}`);
 }
 
 export async function backupNow() {

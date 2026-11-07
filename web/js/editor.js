@@ -405,7 +405,7 @@ export function openTransaction(tx = null, preset = {}) {
       ? act(() => api.put(`/api/transactions/${tx.id}`, payload), 'Saved')
       : act(() => api.post('/api/transactions', payload), 'Added');
   });
-  onRemove(form, { title: 'Delete this transaction?', text: 'Balances and reports change at once. Ctrl+Z brings it back.' },
+  onRemove(form, { title: 'Delete this transaction?', text: 'Balances and reports change at once. This can’t be undone.' },
     () => act(() => api.del(`/api/transactions/${tx.id}`), 'Deleted'));
 }
 
@@ -471,7 +471,7 @@ export function openWallet(w = null, preset = {}) {
       if (hasTransactions && payload.currency && payload.currency !== w.currency) {
         const ok = await confirmDialog({
           title: `Switch ${w.name} to ${data.currency}?`,
-          text: `Its balance ${fmtMoney(w.balance, w.currency)} becomes ${fmtMoney(w.balance, data.currency)}: every amount keeps its number. Ctrl+Z undoes it.`,
+          text: `Its balance ${fmtMoney(w.balance, w.currency)} becomes ${fmtMoney(w.balance, data.currency)}: every amount keeps its number.`,
           ok: `Switch to ${data.currency}`,
         });
         if (!ok) return false;
@@ -488,7 +488,7 @@ export function openWallet(w = null, preset = {}) {
   });
   onRemove(form, {
     title: `Delete ${w?.name}?`,
-    text: w?.has_transactions ? 'It has transactions, so it can only be archived.' : 'Ctrl+Z brings it back.',
+    text: w?.has_transactions ? 'It has transactions, so it can only be archived.' : 'This can’t be undone.',
   }, () => act(() => api.del(`/api/wallets/${w.id}`), 'Deleted'));
 }
 
@@ -561,7 +561,7 @@ export function openRecurring(item = null) {
       ? act(() => api.put(`/api/recurring/${item.id}`, payload), 'Saved')
       : act(() => api.post('/api/recurring', payload), 'Added');
   });
-  onRemove(form, { title: `Delete “${item?.name}”?`, text: 'Payments already made stay. Ctrl+Z brings it back.' },
+  onRemove(form, { title: `Delete “${item?.name}”?`, text: 'Payments already made stay.' },
     () => act(() => api.del(`/api/recurring/${item.id}`), 'Deleted'));
 }
 
@@ -661,7 +661,7 @@ export function openPlanned(item = null) {
       ? act(() => api.put(`/api/planned/${item.id}`, payload), 'Saved')
       : act(() => api.post('/api/planned', payload), 'Added');
   });
-  onRemove(form, { title: `Delete “${item?.name}”?`, text: 'Ctrl+Z brings it back.' },
+  onRemove(form, { title: `Delete “${item?.name}”?`, text: 'This can’t be undone.' },
     () => act(() => api.del(`/api/planned/${item.id}`), 'Deleted'));
 }
 

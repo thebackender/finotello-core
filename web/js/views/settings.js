@@ -241,7 +241,7 @@ export function render(view) {
         if (!targets.length) return undefined;
         const answer = await ask({
           title: `Merge “${c.path}” into…`,
-          text: `All its transactions${hasSubs ? ' and subcategories' : ''} move to the category you pick, then “${c.name}” is deleted. Ctrl+Z undoes it.`,
+          text: `All its transactions${hasSubs ? ' and subcategories' : ''} move to the category you pick, then “${c.name}” is deleted. This can’t be undone.`,
           body: `<select class="dialog-input" id="merge-into">${targets.map((x) => opt(x.id, x.path, '')).join('')}</select>`,
           buttons: [{ spacer: true }, { value: 'cancel', label: 'Cancel' }, { value: 'ok', label: 'Merge', kind: 'destructive' }],
         });
@@ -252,7 +252,7 @@ export function render(view) {
       case 'delete': {
         const ok = await confirmDialog({
           title: `Delete “${c.path}”?`,
-          text: `${c.parent_id == null ? 'Its subcategories go too. ' : ''}Transactions keep it (shown struck through) and still count in reports. To move them elsewhere, use Merge instead. Ctrl+Z brings it back.`,
+          text: `${c.parent_id == null ? 'Its subcategories go too. ' : ''}Transactions keep it (shown struck through) and still count in reports. To move them elsewhere, use Merge instead.`,
           ok: 'Delete', danger: true,
         });
         if (ok) await act(() => api.del(`/api/categories/${c.id}`), 'Deleted');

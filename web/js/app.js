@@ -1,5 +1,5 @@
 // Entry point: tabs, keyboard shortcuts, re-render on data changes.
-import { store, reload, subscribe, undo, backupNow } from './store.js';
+import { store, reload, subscribe, backupNow } from './store.js';
 import { openTransaction } from './editor.js';
 import { esc, today, addDays, fmtDate, fmtTs } from './util.js';
 import { toggleTheme } from './theme.js';
@@ -13,7 +13,6 @@ const VIEWS = { overview, transactions, plans, wallets, settings };
 // Old links still work: Reports became part of Overview.
 const ALIASES = { reports: 'overview' };
 const main = document.getElementById('view');
-const undoBtn = document.getElementById('undo-btn');
 const backupBtn = document.getElementById('backup-btn');
 
 /** The Backup button shows when the last backup was made: "14:32" today, "yesterday 23:10", or a date. */
@@ -47,7 +46,6 @@ function route() {
 }
 
 subscribe(() => {
-  undoBtn.disabled = !store.canUndo;
   showLastBackup();
   route();
 });
@@ -57,7 +55,6 @@ window.addEventListener('themechange', route); // charts pick their colors in JS
 /** New transaction with the current tab's defaults (e.g. the wallet open in a filter). */
 const newTransaction = () => openTransaction(null, VIEWS[current].newPreset?.() ?? {});
 document.getElementById('add-tx').addEventListener('click', newTransaction);
-undoBtn.addEventListener('click', () => undo());
 backupBtn.addEventListener('click', async () => {
   backupBtn.disabled = true;
   await backupNow();
@@ -77,10 +74,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (typing || dialogOpen) return;
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyZ') {
-    e.preventDefault();
-    undo();
-  } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyN') {
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyN') {
     e.preventDefault();
     newTransaction();
   } else if (!e.ctrlKey && !e.metaKey && !e.altKey && /^(Digit|Numpad)[1-9]$/.test(e.code)) {

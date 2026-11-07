@@ -1,4 +1,4 @@
-"""Finotello storage: the SQLite schema, money math, undo, and every change and query the API needs.
+"""Finotello storage: the SQLite schema, money math, and every change and query the API needs.
 
 Python standard library only. One connection, guarded by a lock (the HTTP server is threaded).
 
@@ -12,7 +12,6 @@ Debts are wallets too (type "debt", one per person): above zero they owe you, be
 """
 import csv
 import io
-import json
 import re
 import sqlite3
 import threading
@@ -26,7 +25,6 @@ CATEGORY_KINDS = ("expense", "income")
 CURRENCY_KINDS = ("fiat", "crypto")
 PRIORITIES = ("high", "medium", "low")
 PLAN_STATUSES = ("open", "done", "dropped")
-UNDO_DEPTH = 30  # actions Ctrl+Z can take back; kept in the database, so they survive a restart
 
 # Limits for what you type. The UI reads them from /api/state and stops typing there.
 LIMITS = {
@@ -47,8 +45,6 @@ OTHER_COLOR = "#9a9893"
 
 # Primary key column of each table (the rest use "id").
 KEYS = {"currencies": "code", "config": "key"}
-TABLES = ("config", "currencies", "wallets", "categories", "recurring", "planned", "plan_savings",
-          "transactions", "entries")
 
 
 class ApiError(Exception):
@@ -153,19 +149,10 @@ SCHEMA_1 = [
         category_id    INTEGER REFERENCES categories(id),
         description    TEXT NOT NULL DEFAULT ''
     )""",
-    """CREATE TABLE undo_log (
-        id      INTEGER PRIMARY KEY,
-        batch   INTEGER NOT NULL,                 -- one user action
-        label   TEXT NOT NULL,                    -- "Add transaction", shown after undo
-        tbl     TEXT NOT NULL,
-        row_key TEXT NOT NULL,                    -- JSON
-        before  TEXT                              -- the row as JSON before the change; NULL = it didn't exist
-    )""",
     "CREATE INDEX transactions_date ON transactions(date)",
     "CREATE INDEX entries_transaction ON entries(transaction_id)",
     "CREATE INDEX entries_wallet ON entries(wallet_id)",
     "CREATE INDEX entries_category ON entries(category_id)",
-    "CREATE INDEX undo_batch ON undo_log(batch)",
 ]
 
 SEED_CURRENCIES = [
@@ -214,9 +201,14 @@ def migration_2(conn):
     conn.execute("ALTER TABLE recurring ADD COLUMN is_variable INTEGER NOT NULL DEFAULT 0")
 
 
+def migration_3(conn):
+    # Undo is gone: drop its log (older databases have it; new ones never create it).
+    conn.execute("DROP TABLE IF EXISTS undo_log")
+
+
 # Migrations by number: MIGRATIONS[n] brings the database from version n to n + 1 (PRAGMA user_version).
 # Add new ones at the end; never change one that has shipped.
-MIGRATIONS = [migration_1, migration_2]
+MIGRATIONS = [migration_1, migration_2, migration_3]
 VARIABLE_AVERAGE_OF = 3  # a varying monthly payment is expected to cost the average of this many last payments
 
 
@@ -366,22 +358,13 @@ def like_pattern(text):
     return "%" + re.sub(r"([\\%_])", r"\\\1", text.casefold()) + "%"
 
 
-# ---------- connection, changes and undo ----------
+# ---------- connection and changes ----------
 
 class Change:
-    """One user action: every row it inserts, updates or deletes is logged in undo_log under one batch number,
-    with the row as it was before, so the whole action can be taken back."""
+    """The writes of one user action; Database.write runs them in one transaction."""
 
-    def __init__(self, conn, label):
+    def __init__(self, conn):
         self.conn = conn
-        self.label = label
-        self.batch = conn.execute("SELECT COALESCE(MAX(batch), 0) + 1 FROM undo_log").fetchone()[0]
-
-    def _log(self, table, key, before):
-        self.conn.execute(
-            "INSERT INTO undo_log (batch, label, tbl, row_key, before) VALUES (?, ?, ?, ?, ?)",
-            (self.batch, self.label, table, json.dumps(key),
-             None if before is None else json.dumps(dict(before), ensure_ascii=False)))
 
     def row(self, table, key):
         return self.conn.execute(f"SELECT * FROM {table} WHERE {KEYS.get(table, 'id')} = ?", (key,)).fetchone()
@@ -390,9 +373,7 @@ class Change:
         columns = ", ".join(values)
         marks = ", ".join("?" for _ in values)
         cursor = self.conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({marks})", tuple(values.values()))
-        key = values[KEYS[table]] if table in KEYS else cursor.lastrowid
-        self._log(table, key, None)
-        return key
+        return values[KEYS[table]] if table in KEYS else cursor.lastrowid
 
     def update(self, table, key, values):
         before = self.row(table, key)
@@ -401,20 +382,11 @@ class Change:
         values = {k: v for k, v in values.items() if before[k] != v}
         if not values:
             return
-        self._log(table, key, before)
         sets = ", ".join(f"{column} = ?" for column in values)
         self.conn.execute(f"UPDATE {table} SET {sets} WHERE {KEYS.get(table, 'id')} = ?", (*values.values(), key))
 
     def delete(self, table, key):
-        before = self.row(table, key)
-        if before is None:
-            return
-        self._log(table, key, before)
         self.conn.execute(f"DELETE FROM {table} WHERE {KEYS.get(table, 'id')} = ?", (key,))
-
-    def finish(self):
-        """Keep the last UNDO_DEPTH actions."""
-        self.conn.execute("DELETE FROM undo_log WHERE batch <= ?", (self.batch - UNDO_DEPTH,))
 
 
 class Database:
@@ -449,62 +421,19 @@ class Database:
         with self.lock:
             return fn(self.conn, *args)
 
-    def write(self, label, fn, *args):
+    def write(self, fn, *args):
         """Run fn(change, *args) as one action: all of it is saved, or none of it."""
         with self.lock:
             if self.before_write:
                 self.before_write()
             self.conn.execute("BEGIN IMMEDIATE")
             try:
-                change = Change(self.conn, label)
-                result = fn(change, *args)
-                change.finish()
+                result = fn(Change(self.conn), *args)
                 self.conn.execute("COMMIT")
             except BaseException:
                 self.conn.execute("ROLLBACK")
                 raise
             return result
-
-    def can_undo(self):
-        with self.lock:
-            return self.conn.execute("SELECT 1 FROM undo_log LIMIT 1").fetchone() is not None
-
-    def undo(self):
-        """Take back the last action: put every row it touched back the way it was, newest change first."""
-        with self.lock:
-            if self.before_write:
-                self.before_write()
-            self.conn.execute("BEGIN IMMEDIATE")
-            try:
-                batch = self.conn.execute("SELECT MAX(batch) FROM undo_log").fetchone()[0]
-                if batch is None:
-                    raise ApiError("Nothing to undo")
-                rows = self.conn.execute("SELECT * FROM undo_log WHERE batch = ? ORDER BY id DESC", (batch,)).fetchall()
-                for row in rows:
-                    self._restore(row["tbl"], json.loads(row["row_key"]), row["before"])
-                self.conn.execute("DELETE FROM undo_log WHERE batch = ?", (batch,))
-                self.conn.execute("COMMIT")
-            except BaseException:
-                self.conn.execute("ROLLBACK")
-                raise
-            return {"ok": True, "undone": rows[0]["label"] if rows else ""}
-
-    def _restore(self, table, key, before):
-        if table not in TABLES:
-            raise ApiError(f"Unknown table in the undo log: {table}", 500)
-        key_column = KEYS.get(table, "id")
-        if before is None:
-            self.conn.execute(f"DELETE FROM {table} WHERE {key_column} = ?", (key,))
-            return
-        values = json.loads(before)
-        exists = self.conn.execute(f"SELECT 1 FROM {table} WHERE {key_column} = ?", (key,)).fetchone()
-        if exists:
-            sets = ", ".join(f"{column} = ?" for column in values)
-            self.conn.execute(f"UPDATE {table} SET {sets} WHERE {key_column} = ?", (*values.values(), key))
-        else:
-            columns = ", ".join(values)
-            marks = ", ".join("?" for _ in values)
-            self.conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({marks})", tuple(values.values()))
 
     def backup_to(self, target):
         """Copy the whole database to the file target (safe while it is open)."""

@@ -35,7 +35,6 @@ Tests: `python3 -m unittest discover tests`
 
 - `1`–`5`: switch tabs
 - `N`: new transaction (in Transactions with a wallet filter, from that wallet)
-- `Ctrl+Z`: undo the last change (up to 30 steps, kept in the database, so they survive a restart)
 - `Esc`: close a dialog or a list
 
 Shortcuts work with any keyboard layout (`N` is also `Т` on a Russian layout).
@@ -73,7 +72,8 @@ and expense lines without a category. Transfers, debts and balance adjustments d
 
 Everything is in `data/finance.db` (SQLite; open it with `sqlite3` or DB Browser for SQLite). Amounts are stored as integers
 in the currency's smallest unit (cents, kopecks, satoshi), so sums are exact. Deleting a wallet, category, payment or plan
-only marks it `is_deleted`; Ctrl+Z brings it back. A wallet with transactions can't be deleted: archive it instead.
+only marks it `is_deleted`: the row stays in the file, but the app doesn't bring it back, and there is no undo.
+A wallet with transactions can't be deleted: archive it instead.
 
 Before the first change of each day the server copies the database to `finance-YYYY-MM-DD.db` in the backup folder
 (`data/backups/`, or `--backup-dir` / `FIN_BACKUP_DIR`). The archive button in the header makes a copy right away
@@ -95,7 +95,6 @@ over `data/finance.db`.
 | `recurring` | monthly payments: `name`, `amount` (for a varying one, roughly), `currency`, `category_id`, `wallet_id`, `day`, `is_active`, `is_variable` |
 | `planned` | `name`, `amount`, `currency`, `category_id`, `priority`, `due`, `notes`, `status` (open / done / dropped) |
 | `plan_savings` | money put aside for a plan (or taken back, below zero): `planned_id`, `date`, `amount`, `note` |
-| `undo_log` | the rows each action changed, as they were before, for Ctrl+Z |
 
 The schema version is `PRAGMA user_version`; new versions add a migration at the end of `MIGRATIONS` in `db.py`. When the server opens an older database, it first copies it to `finance-before-vN-….db` in the backup folder (kept until you delete it), then upgrades it.
 
@@ -118,7 +117,7 @@ Checked by the server (`LIMITS` in `db.py`); the UI stops typing at the same len
 
 ```
 server.py              HTTP server, routes, backups, .env
-db.py                  SQLite schema and migrations, money math, every change and query, undo
+db.py                  SQLite schema and migrations, money math, every change and query
 tests/                 unittest: db.py and the HTTP API
 web/index.html         page
 web/style.css          styles

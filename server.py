@@ -91,7 +91,7 @@ def last_backup():
 
 
 # ---------- UI settings (data/settings.json) ----------
-# Theme and per-tab view options. Kept apart from the database: no undo, no backups.
+# Theme and per-tab view options. Kept apart from the database: no backups.
 
 def load_settings():
     try:
@@ -131,16 +131,15 @@ def update_settings(body):
 
 def state():
     result = database.read(db.get_state)
-    result["can_undo"] = database.can_undo()
     result["last_backup"] = last_backup()
     return result
 
 
-def change(label, fn, takes_body=True):
-    """A route handler that runs fn(change, [item], [body]) as one undoable action."""
+def change(fn, takes_body=True):
+    """A route handler that runs fn(change, [item], [body]) as one action: all of it is saved, or none of it."""
     def handler(body, item, query):
         args = ([] if item is None else [item]) + ([body or {}] if takes_body else [])
-        return database.write(label, fn, *args)
+        return database.write(fn, *args)
     return handler
 
 
@@ -160,41 +159,40 @@ ROUTES = [
     ("GET", r"/api/export\.csv", lambda b, i, q: download(
         "﻿" + database.read(db.export_csv),  # BOM: Excel then reads the file as UTF-8
         f"finotello-transactions-{date.today().isoformat()}.csv", "text/csv; charset=utf-8")),
-    ("POST", r"/api/undo", lambda b, i, q: database.undo()),
     ("POST", r"/api/backup", lambda b, i, q: backup_now()),
     ("GET", r"/api/settings", lambda b, i, q: load_settings()),
     ("PUT", r"/api/settings", lambda b, i, q: update_settings(b)),
-    ("PUT", r"/api/config", change("Change settings", db.update_config)),
+    ("PUT", r"/api/config", change(db.update_config)),
 
-    ("POST", r"/api/transactions", change("Add transaction", db.create_transaction)),
-    ("PUT", r"/api/transactions/(\d+)", change("Edit transaction", db.update_transaction)),
-    ("DELETE", r"/api/transactions/(\d+)", change("Delete transaction", db.delete_transaction, takes_body=False)),
+    ("POST", r"/api/transactions", change(db.create_transaction)),
+    ("PUT", r"/api/transactions/(\d+)", change(db.update_transaction)),
+    ("DELETE", r"/api/transactions/(\d+)", change(db.delete_transaction, takes_body=False)),
 
-    ("POST", r"/api/wallets", change("Add wallet", db.create_wallet)),
-    ("PUT", r"/api/wallets/(\d+)", change("Edit wallet", db.update_wallet)),
-    ("DELETE", r"/api/wallets/(\d+)", change("Delete wallet", db.delete_wallet, takes_body=False)),
-    ("POST", r"/api/wallets/(\d+)/reconcile", change("Balance check", db.reconcile_wallet)),
+    ("POST", r"/api/wallets", change(db.create_wallet)),
+    ("PUT", r"/api/wallets/(\d+)", change(db.update_wallet)),
+    ("DELETE", r"/api/wallets/(\d+)", change(db.delete_wallet, takes_body=False)),
+    ("POST", r"/api/wallets/(\d+)/reconcile", change(db.reconcile_wallet)),
 
-    ("POST", r"/api/categories", change("Add category", db.create_category)),
-    ("PUT", r"/api/categories/(\d+)", change("Edit category", db.update_category)),
-    ("DELETE", r"/api/categories/(\d+)", change("Delete category", db.delete_category, takes_body=False)),
-    ("POST", r"/api/categories/(\d+)/merge", change("Merge categories", db.merge_category)),
+    ("POST", r"/api/categories", change(db.create_category)),
+    ("PUT", r"/api/categories/(\d+)", change(db.update_category)),
+    ("DELETE", r"/api/categories/(\d+)", change(db.delete_category, takes_body=False)),
+    ("POST", r"/api/categories/(\d+)/merge", change(db.merge_category)),
 
-    ("POST", r"/api/currencies", change("Add currency", db.create_currency)),
-    ("PUT", r"/api/currencies/([A-Za-z0-9]+)", change("Edit currency", db.update_currency)),
-    ("DELETE", r"/api/currencies/([A-Za-z0-9]+)", change("Remove currency", db.delete_currency, takes_body=False)),
+    ("POST", r"/api/currencies", change(db.create_currency)),
+    ("PUT", r"/api/currencies/([A-Za-z0-9]+)", change(db.update_currency)),
+    ("DELETE", r"/api/currencies/([A-Za-z0-9]+)", change(db.delete_currency, takes_body=False)),
 
-    ("POST", r"/api/recurring", change("Add monthly payment", db.create_recurring)),
-    ("PUT", r"/api/recurring/(\d+)", change("Edit monthly payment", db.update_recurring)),
-    ("DELETE", r"/api/recurring/(\d+)", change("Delete monthly payment", db.delete_recurring, takes_body=False)),
-    ("POST", r"/api/recurring/(\d+)/pay", change("Pay", db.pay_recurring)),
+    ("POST", r"/api/recurring", change(db.create_recurring)),
+    ("PUT", r"/api/recurring/(\d+)", change(db.update_recurring)),
+    ("DELETE", r"/api/recurring/(\d+)", change(db.delete_recurring, takes_body=False)),
+    ("POST", r"/api/recurring/(\d+)/pay", change(db.pay_recurring)),
 
-    ("POST", r"/api/planned", change("Add plan", db.create_planned)),
-    ("PUT", r"/api/planned/(\d+)", change("Edit plan", db.update_planned)),
-    ("DELETE", r"/api/planned/(\d+)", change("Delete plan", db.delete_planned, takes_body=False)),
-    ("POST", r"/api/planned/(\d+)/save", change("Save for a plan", db.save_for_plan)),
-    ("POST", r"/api/planned/(\d+)/buy", change("Buy", db.buy_planned)),
-    ("POST", r"/api/planned/(\d+)/drop", change("Drop plan", db.drop_planned, takes_body=False)),
+    ("POST", r"/api/planned", change(db.create_planned)),
+    ("PUT", r"/api/planned/(\d+)", change(db.update_planned)),
+    ("DELETE", r"/api/planned/(\d+)", change(db.delete_planned, takes_body=False)),
+    ("POST", r"/api/planned/(\d+)/save", change(db.save_for_plan)),
+    ("POST", r"/api/planned/(\d+)/buy", change(db.buy_planned)),
+    ("POST", r"/api/planned/(\d+)/drop", change(db.drop_planned, takes_body=False)),
 ]
 
 

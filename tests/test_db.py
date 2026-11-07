@@ -24,27 +24,27 @@ class Base(unittest.TestCase):
         self.tmp.cleanup()
 
     # helpers
-    def w(self, label, fn, *args):
-        return self.db.write(label, fn, *args)
+    def w(self, fn, *args):
+        return self.db.write(fn, *args)
 
     def state(self):
         return self.db.read(db.get_state, DAY)
 
     def wallet(self, name, currency="USD", type_="bank", **extra):
-        return self.w("Add wallet", db.create_wallet, {"name": name, "currency": currency, "type": type_, **extra})["id"]
+        return self.w(db.create_wallet, {"name": name, "currency": currency, "type": type_, **extra})["id"]
 
     def cat(self, path, kind="expense"):
-        return self.w("Add category", db.create_category, {"kind": kind, "path": path})["id"]
+        return self.w(db.create_category, {"kind": kind, "path": path})["id"]
 
     def tx(self, type_, entries, date=DAY, note=""):
-        return self.w("Add transaction", db.create_transaction,
+        return self.w(db.create_transaction,
                       {"type": type_, "date": date, "note": note, "entries": entries})["id"]
 
     def balance(self, wallet_id):
         return next(w for w in self.state()["wallets"] if w["id"] == wallet_id)["balance"]
 
     def set_rate(self, code, rate):
-        self.w("Rate", db.update_currency, code, {"rate": rate})
+        self.w(db.update_currency, code, {"rate": rate})
 
 
 class Money(unittest.TestCase):
@@ -80,6 +80,7 @@ class Seed(Base):
         old = Path(self.tmp.name) / "old.db"
         conn = sqlite3.connect(old, isolation_level=None)
         db.migration_1(conn)
+        conn.execute("CREATE TABLE undo_log (id INTEGER PRIMARY KEY, batch INTEGER)")  # as version 1 had it
         conn.execute("PRAGMA user_version = 1")
         conn.execute("INSERT INTO recurring (name, amount, currency, created) VALUES ('Rent', 80000, 'USD', 'x')")
         conn.close()
@@ -90,6 +91,8 @@ class Seed(Base):
             copy = next(backups.glob("finance-before-v*.db"))  # the old file was saved first
             self.assertEqual(sqlite3.connect(copy).execute("PRAGMA user_version").fetchone()[0], 1)
             self.assertEqual(upgraded.read(db.get_state, DAY)["recurring"][0]["is_variable"], False)
+            self.assertIsNone(upgraded.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = 'undo_log'").fetchone())  # migration 3 dropped it
         finally:
             upgraded.close()
 
@@ -136,43 +139,40 @@ class Wallets(Base):
 
     def test_reconcile(self):
         cash = self.wallet("Cash", type_="cash", balance="100")
-        result = self.w("Check", db.reconcile_wallet, cash, {"balance": "93.40"})
+        result = self.w(db.reconcile_wallet, cash, {"balance": "93.40"})
         self.assertEqual(result["diff"], "-6.60")
         self.assertEqual(self.balance(cash), "93.40")
-        self.assertEqual(self.w("Check", db.reconcile_wallet, cash, {"balance": "93.4"})["diff"], "0.00")
+        self.assertEqual(self.w(db.reconcile_wallet, cash, {"balance": "93.4"})["diff"], "0.00")
 
     def test_delete_only_without_transactions(self):
         card = self.wallet("Card", balance="1")
         with self.assertRaises(ApiError):
-            self.w("Delete", db.delete_wallet, card)
+            self.w(db.delete_wallet, card)
         empty = self.wallet("Empty")
-        self.w("Delete", db.delete_wallet, empty)
+        self.w(db.delete_wallet, empty)
         self.assertEqual([w["id"] for w in self.state()["wallets"]], [card])
 
     def test_fix_currency_picked_by_mistake(self):
         card = self.wallet("Card", balance="1000")  # meant to be RUB
         self.tx("expense", [{"wallet_id": card, "amount": "-12.50"}])
-        self.w("Edit", db.update_wallet, card, {"currency": "RUB"})
+        self.w(db.update_wallet, card, {"currency": "RUB"})
         self.assertEqual(self.balance(card), "987.50")
-        self.w("Edit", db.update_wallet, card, {"currency": "BTC"})  # more decimals: amounts scale up
+        self.w(db.update_wallet, card, {"currency": "BTC"})  # more decimals: amounts scale up
         self.assertEqual(self.balance(card), "987.50000000")
-        self.db.undo()
-        self.db.undo()
-        self.assertEqual(self.balance(card), "987.50")
 
     def test_currency_fixed_when_shared_with_other_wallets(self):
         card, cash = self.wallet("Card", balance="100"), self.wallet("Cash")
         self.tx("transfer", [{"wallet_id": card, "amount": "-50"}, {"wallet_id": cash, "amount": "50"}])
         with self.assertRaises(ApiError):
-            self.w("Edit", db.update_wallet, card, {"currency": "EUR"})
+            self.w(db.update_wallet, card, {"currency": "EUR"})
 
     def test_currency_with_fewer_decimals_must_fit(self):
         coins = self.wallet("Coins", currency="BTC", balance="0.5")
-        self.w("Edit", db.update_wallet, coins, {"currency": "RUB"})
+        self.w(db.update_wallet, coins, {"currency": "RUB"})
         self.assertEqual(self.balance(coins), "0.50")
         odd = self.wallet("Odd", currency="BTC", balance="0.123")
         with self.assertRaises(ApiError):
-            self.w("Edit", db.update_wallet, odd, {"currency": "USD"})
+            self.w(db.update_wallet, odd, {"currency": "USD"})
 
     def test_names_are_unique(self):
         self.wallet("Card")
@@ -250,16 +250,16 @@ class Categories(Base):
         self.assertEqual(row["path"], "Treats:Snacks")
         parent = next(c for c in state["categories"] if c["id"] == row["parent_id"])
         self.assertEqual(row["color"], parent["color"])
-        self.assertEqual(self.w("Add", db.create_category, {"kind": "expense", "path": "treats:snacks"})["id"], snack)
+        self.assertEqual(self.w(db.create_category, {"kind": "expense", "path": "treats:snacks"})["id"], snack)
 
     def test_two_levels_only(self):
         with self.assertRaises(ApiError):
             self.cat("A:B:C")
         fruits = self.cat("Food:Fruits")
         with self.assertRaises(ApiError):
-            self.w("Add", db.create_category, {"kind": "expense", "name": "Apples", "parent_id": fruits})
+            self.w(db.create_category, {"kind": "expense", "name": "Apples", "parent_id": fruits})
         with self.assertRaises(ApiError):
-            self.w("Add", db.create_category, {"kind": "expense", "name": "A:B"})
+            self.w(db.create_category, {"kind": "expense", "name": "A:B"})
 
     def test_report_rolls_up_subcategories(self):
         card = self.wallet("Card", balance="1000")
@@ -293,18 +293,15 @@ class Categories(Base):
         state = self.state()
         groceries2 = next(c for c in state["categories"] if c["path"] == "Groceries2")["id"]
         food = next(c for c in state["categories"] if c["path"] == "Food")["id"]
-        self.w("Merge", db.merge_category, groceries2, {"into": food})
+        self.w(db.merge_category, groceries2, {"into": food})
         lines = self.db.read(db.list_transactions, {})["transactions"][0]["entries"]
         meat = next(c for c in self.state()["categories"] if c["path"] == "Food:Meat")
         self.assertEqual(sorted(e["category_id"] for e in lines), sorted([food_fruits, meat["id"]]))
-        self.db.undo()
-        lines = self.db.read(db.list_transactions, {})["transactions"][0]["entries"]
-        self.assertEqual(sorted(e["category_id"] for e in lines), sorted([old_fruit, old_meat]))
 
     def test_move_subcategory(self):
         fruits = self.cat("Food:Fruits")
         health = self.cat("Health")
-        self.w("Move", db.update_category, fruits, {"parent_id": health})
+        self.w(db.update_category, fruits, {"parent_id": health})
         self.assertEqual(next(c for c in self.state()["categories"] if c["id"] == fruits)["path"], "Health:Fruits")
 
     def test_delete_keeps_old_lines(self):
@@ -312,11 +309,11 @@ class Categories(Base):
         fruits = self.cat("Food:Fruits")
         tx_id = self.tx("expense", [{"wallet_id": card, "amount": "-1", "category_id": fruits}])
         food = next(c for c in self.state()["categories"] if c["path"] == "Food")["id"]
-        self.w("Delete", db.delete_category, food)
+        self.w(db.delete_category, food)
         cats = {c["id"]: c for c in self.state()["categories"]}
         self.assertTrue(cats[fruits]["is_deleted"])
         # editing the old transaction keeps its deleted category, a new one can't use it
-        self.w("Edit", db.update_transaction, tx_id, {"note": "x", "entries": [
+        self.w(db.update_transaction, tx_id, {"note": "x", "entries": [
             {"wallet_id": card, "amount": "-2", "category_id": fruits}]})
         with self.assertRaises(ApiError):
             self.tx("expense", [{"wallet_id": card, "amount": "-1", "category_id": fruits}])
@@ -326,12 +323,12 @@ class Plans(Base):
     def test_monthly_payment(self):
         card = self.wallet("Card", balance="2000")
         rent = self.cat("Housing:Rent")
-        item = self.w("Add", db.create_recurring, {"name": "Rent", "amount": "800", "currency": "USD",
+        item = self.w(db.create_recurring, {"name": "Rent", "amount": "800", "currency": "USD",
                                                    "category_id": rent, "wallet_id": card, "day": 5})["id"]
         state = self.state()
         self.assertEqual(state["totals"]["monthly_required"], "800.00")
         self.assertEqual(state["totals"]["monthly_left"], "800.00")
-        self.w("Pay", db.pay_recurring, item, {"date": DAY})
+        self.w(db.pay_recurring, item, {"date": DAY})
         state = self.state()
         self.assertEqual(state["totals"]["monthly_left"], "0.00")
         self.assertIsNotNone(state["recurring"][0]["paid_tx_id"])
@@ -341,12 +338,12 @@ class Plans(Base):
 
     def test_varying_payment_expects_average_of_last_payments(self):
         card = self.wallet("Card", balance="1000")
-        util = self.w("Add", db.create_recurring, {"name": "Utilities", "amount": "100", "currency": "USD",
+        util = self.w(db.create_recurring, {"name": "Utilities", "amount": "100", "currency": "USD",
                                                    "is_variable": True, "wallet_id": card})["id"]
         rec = lambda day=DAY: self.db.read(db.get_state, day)["recurring"][0]  # noqa: E731
         self.assertEqual((rec()["expected_base"], rec()["expected_from"]), ("100.00", 0))  # no payments yet
         for date, amount in [("2026-08-10", "80"), ("2026-09-10", "120"), ("2026-10-10", "90"), ("2026-11-10", "130")]:
-            self.w("Pay", db.pay_recurring, util, {"date": date, "amount": amount})
+            self.w(db.pay_recurring, util, {"date": date, "amount": amount})
         state = self.db.read(db.get_state, DAY)
         self.assertEqual(state["recurring"][0]["expected_base"], "113.33")  # (120 + 90 + 130) / 3
         self.assertEqual(state["recurring"][0]["expected"], "113.33")
@@ -360,55 +357,55 @@ class Plans(Base):
     def test_varying_payment_average_in_its_own_currency(self):
         card = self.wallet("Card RUB", currency="RUB", balance="100000")
         self.set_rate("RUB", "0.011")
-        util = self.w("Add", db.create_recurring, {"name": "Utilities", "amount": "6000", "currency": "RUB",
+        util = self.w(db.create_recurring, {"name": "Utilities", "amount": "6000", "currency": "RUB",
                                                    "is_variable": True, "wallet_id": card})["id"]
         for date, amount in [("2026-08-15", "5200"), ("2026-09-15", "5800"), ("2026-10-15", "7400")]:
-            self.w("Pay", db.pay_recurring, util, {"date": date, "amount": amount})
+            self.w(db.pay_recurring, util, {"date": date, "amount": amount})
         self.assertEqual(self.state()["recurring"][0]["expected"], "6133.33")  # no detour through the base currency
 
     def test_fixed_payment_counts_what_was_really_paid(self):
         card = self.wallet("Card", balance="2000")
-        rent = self.w("Add", db.create_recurring, {"name": "Rent", "amount": "800", "currency": "USD", "wallet_id": card})["id"]
-        self.w("Pay", db.pay_recurring, rent, {"date": DAY, "amount": "850"})
+        rent = self.w(db.create_recurring, {"name": "Rent", "amount": "800", "currency": "USD", "wallet_id": card})["id"]
+        self.w(db.pay_recurring, rent, {"date": DAY, "amount": "850"})
         totals = self.state()["totals"]
         self.assertEqual((totals["monthly_required"], totals["monthly_paid"]), ("800.00", "850.00"))
 
     def test_pay_in_another_currency_needs_amount(self):
         card = self.wallet("Card RUB", currency="RUB", balance="100000")
-        item = self.w("Add", db.create_recurring, {"name": "Gym", "amount": "50", "currency": "USD"})["id"]
+        item = self.w(db.create_recurring, {"name": "Gym", "amount": "50", "currency": "USD"})["id"]
         with self.assertRaises(ApiError):
-            self.w("Pay", db.pay_recurring, item, {"wallet_id": card})
-        self.w("Pay", db.pay_recurring, item, {"wallet_id": card, "amount": "4600"})
+            self.w(db.pay_recurring, item, {"wallet_id": card})
+        self.w(db.pay_recurring, item, {"wallet_id": card, "amount": "4600"})
         self.assertEqual(self.balance(card), "95400.00")
 
     def test_savings_buy_and_free_money(self):
         card = self.wallet("Card", balance="3000")
         reserve = self.wallet("Reserve", type_="bank", is_cushion=True, balance="1000")
-        self.w("Target", db.update_config, {"cushion_target": "2500"})
+        self.w(db.update_config, {"cushion_target": "2500"})
         dentist = self.cat("Health:Dentist")
-        plan = self.w("Add", db.create_planned, {"name": "Teeth", "amount": "1500", "currency": "USD",
+        plan = self.w(db.create_planned, {"name": "Teeth", "amount": "1500", "currency": "USD",
                                                  "category_id": dentist})["id"]
-        self.w("Save", db.save_for_plan, plan, {"amount": "600"})
+        self.w(db.save_for_plan, plan, {"amount": "600"})
         with self.assertRaises(ApiError):
-            self.w("Save", db.save_for_plan, plan, {"amount": "-700"})
+            self.w(db.save_for_plan, plan, {"amount": "-700"})
         totals = self.state()["totals"]
         self.assertEqual(totals["cushion_saved"], "1000.00")
         self.assertEqual(totals["cushion_left"], "1500.00")
         self.assertEqual(totals["planned_missing"], "900.00")
         self.assertEqual(totals["free"], "2400.00")  # 4000 - 1000 cushion - 600 saved
-        self.w("Buy", db.buy_planned, plan, {"wallet_id": card, "amount": "1450"})
+        self.w(db.buy_planned, plan, {"wallet_id": card, "amount": "1450"})
         state = self.state()
         self.assertEqual(state["planned"][0]["status"], "done")
         self.assertEqual(state["totals"]["earmarked"], "0.00")
         self.assertEqual(self.balance(card), "1550.00")
         # deleting the purchase opens the plan again
-        self.w("Delete", db.delete_transaction, state["planned"][0]["purchase_tx_id"])
+        self.w(db.delete_transaction, state["planned"][0]["purchase_tx_id"])
         self.assertEqual(self.state()["planned"][0]["status"], "open")
         del reserve
 
     def test_cushion_without_marked_wallets_uses_all_money(self):
         self.wallet("Card", balance="700")
-        self.w("Target", db.update_config, {"cushion_target": "1000"})
+        self.w(db.update_config, {"cushion_target": "1000"})
         totals = self.state()["totals"]
         self.assertEqual(totals["cushion_saved"], "700.00")
         self.assertEqual(totals["cushion_left"], "300.00")
@@ -419,8 +416,8 @@ class Currencies(Base):
     def test_change_base_currency(self):
         self.set_rate("EUR", "1.25")
         self.set_rate("BTC", "100000")
-        self.w("Target", db.update_config, {"cushion_target": "1000"})
-        self.w("Base", db.update_config, {"base_currency": "EUR"})
+        self.w(db.update_config, {"cushion_target": "1000"})
+        self.w(db.update_config, {"base_currency": "EUR"})
         rates = {c["code"]: c["rate"] for c in self.state()["currencies"]}
         self.assertEqual(rates["EUR"], "1")
         self.assertEqual(rates["USD"], "0.8")
@@ -429,15 +426,15 @@ class Currencies(Base):
 
     def test_switch_base_on_fresh_database(self):
         # No rates set yet: nothing to recount, so it just switches.
-        self.w("Base", db.update_config, {"base_currency": "RUB"})
+        self.w(db.update_config, {"base_currency": "RUB"})
         rates = {c["code"]: c["rate"] for c in self.state()["currencies"]}
         self.assertEqual((rates["RUB"], rates["USD"]), ("1", "0"))
 
     def test_switch_base_needs_its_rate_when_others_are_set(self):
         self.set_rate("EUR", "1.1")
         with self.assertRaises(ApiError):
-            self.w("Base", db.update_config, {"base_currency": "RUB"})
-        self.w("Base", db.update_config, {"base_currency": "RUB", "base_rate": "0.0125"})
+            self.w(db.update_config, {"base_currency": "RUB"})
+        self.w(db.update_config, {"base_currency": "RUB", "base_rate": "0.0125"})
         rates = {c["code"]: c["rate"] for c in self.state()["currencies"]}
         self.assertEqual((rates["RUB"], rates["USD"], rates["EUR"]), ("1", "80", "88"))
 
@@ -448,53 +445,19 @@ class Currencies(Base):
     def test_cant_remove_used_currency(self):
         self.wallet("Card", currency="EUR")
         with self.assertRaises(ApiError):
-            self.w("Remove", db.delete_currency, "EUR")
-        self.w("Remove", db.delete_currency, "ETH")
+            self.w(db.delete_currency, "EUR")
+        self.w(db.delete_currency, "ETH")
         self.assertNotIn("ETH", [c["code"] for c in self.state()["currencies"]])
-        self.db.undo()
-        self.assertIn("ETH", [c["code"] for c in self.state()["currencies"]])
 
 
-class Undo(Base):
-    def test_undo_edit_restores_lines(self):
-        card = self.wallet("Card", balance="100")
-        tx_id = self.tx("expense", [{"wallet_id": card, "amount": "-10"}])
-        self.w("Edit", db.update_transaction, tx_id, {"entries": [
-            {"wallet_id": card, "amount": "-7"}, {"wallet_id": card, "amount": "-1"}]})
-        self.assertEqual(self.balance(card), "92.00")
-        self.assertEqual(self.db.undo()["undone"], "Edit")
-        self.assertEqual(self.balance(card), "90.00")
-        self.db.undo()
-        self.assertEqual(self.balance(card), "100.00")
-
-    def test_undo_survives_restart(self):
-        card = self.wallet("Card", balance="100")
-        self.tx("expense", [{"wallet_id": card, "amount": "-10"}])
-        self.db.close()
-        self.db = db.Database(self.path)
-        self.db.undo()
-        self.assertEqual(self.balance(card), "100.00")
-
+class Integrity(Base):
     def test_failed_action_changes_nothing(self):
         card = self.wallet("Card", balance="100")
         with self.assertRaises(ApiError):
             self.tx("expense", [{"wallet_id": card, "amount": "-1"}, {"wallet_id": card, "amount": "5"}])
         self.assertEqual(self.balance(card), "100.00")
-        self.assertEqual(self.db.undo()["undone"], "Add wallet")
+        self.assertEqual(len(self.db.read(db.list_transactions, {})["transactions"]), 1)  # only the starting balance
 
-    def test_depth(self):
-        card = self.wallet("Card")
-        for n in range(db.UNDO_DEPTH + 5):
-            self.w(f"Rename {n}", db.update_wallet, card, {"name": f"Card {n}"})
-        batches = self.db.conn.execute("SELECT COUNT(DISTINCT batch) FROM undo_log").fetchone()[0]
-        self.assertEqual(batches, db.UNDO_DEPTH)
-
-    def test_nothing_to_undo(self):
-        with self.assertRaises(ApiError):
-            self.db.undo()
-
-
-class Integrity(Base):
     def test_foreign_keys_are_on(self):
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.conn.execute("INSERT INTO entries (transaction_id, wallet_id, amount) VALUES (999, 999, 1)")

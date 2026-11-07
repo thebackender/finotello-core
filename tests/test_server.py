@@ -63,10 +63,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(report["expense"]["total"], "12.50")
         status, result, _ = self.call("PUT", "/api/currencies/eur", {"rate": "1.1"})
         self.assertEqual(status, 200, result)
-        status, result, _ = self.call("POST", "/api/undo", {})
-        self.assertEqual(result["undone"], "Edit currency")
         _, state, _ = self.call("GET", "/api/state")
-        self.assertTrue(state["can_undo"])
         self.assertIn("time", state["last_backup"])  # the daily backup was made before the first change
 
     def test_errors(self):
