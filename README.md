@@ -28,7 +28,7 @@ Tests: `python3 -m unittest discover tests`
 | 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe. The eye button next to it hides these balances (here and in Wallets) behind asterisks, e.g. when someone looks at your screen; it stays hidden until you click it again. Under it, spending and income for a period you pick on a calendar (click the start and end days, or type the dates; it is kept in the database; "This month" goes back to the current month, which is also the default): spending by category as a pie (the six largest; smaller ones fold into "Other"; the list next to it gives each amount and share) and income by source as bars, each with its total. Click a category or "Other" to see what's inside. Changing the period redraws only this part. At the bottom, monthly payments, plans and the cushion at a glance |
 | 2 | Transactions | Everything by day, a month at a time or all time. Filter by wallet, category (with its subcategories) or type; search notes and line descriptions. Click a transaction to edit or delete it |
 | 3 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense with the real amount; "paid" counts what you really paid). A payment marked **the amount varies** (utilities, phone) is expected to cost the average of its last 3 payments; until it has any, the rough amount you entered. **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside: it stays in your wallets, only marked for the plan), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
-| 4 | Wallets | Wallets by type with their balance (and its value in the base currency). **Check** compares with the real balance and records the difference. **Debts**: one entry per person, Give / Get money |
+| 4 | Wallets | Wallets by type with their balance (and its value in the base currency). **Debts**: one entry per person, Give / Get money |
 | 5 | Settings | Base currency and exchange rates, spending categories and income sources, theme, export to CSV / JSON |
 
 ## Keyboard shortcuts
@@ -50,7 +50,7 @@ in that wallet's currency, and may have a category and a description. A wallet's
 | Income | lines above zero, with income categories (sources) |
 | Transfer | money leaves one wallet and arrives in another; in different currencies you enter both amounts (that's the exchange rate you got). A fee is an extra line with an expense category |
 | Debt | money to or from a person (see below) |
-| Balance adjustment | made by Check and by a wallet's starting balance |
+| Balance adjustment | a wallet's starting balance, entered when you add it |
 
 **Debts.** Every person is a wallet of type "debt". Its balance above zero means they owe you, below zero means you owe them.
 Lending 10 000 is a debt transaction `card −10 000, Ivan +10 000`; when Ivan pays back 4 000, `Ivan −4 000, card +4 000`.
@@ -60,7 +60,7 @@ If a friend pays for your lunch, record an expense from the friend: it counts as
 "+ Create" makes whatever is missing. Reports count a category together with its subcategories.
 Deleting a category keeps it on old transactions (shown struck through); **Merge into…** moves its transactions to another one.
 
-**Currencies.** Each wallet has one currency. If you picked the wrong one, change it in the wallet's editor: every amount keeps its number in the new currency (1 000 ₽ becomes $1 000). That works while the wallet's transactions involve it alone (starting balance, expenses, income, balance checks); once it has transfers or debts with other wallets, the currency is fixed, and you move the money to a new wallet with a transfer. Totals are in the base currency, at the rates you
+**Currencies.** Each wallet has one currency. If you picked the wrong one, change it in the wallet's editor: every amount keeps its number in the new currency (1 000 ₽ becomes $1 000). That works while the wallet's transactions involve it alone (starting balance, expenses, income); once it has transfers or debts with other wallets, the currency is fixed, and you move the money to a new wallet with a transfer. Totals are in the base currency, at the rates you
 enter in Settings (one unit of a currency = so much of the base currency). There is one current rate per currency:
 when you change it, all totals and reports are recounted. A currency in use with no rate counts as zero, and a warning says so.
 Changing the base currency recounts all rates through the new one.
@@ -124,7 +124,7 @@ web/style.css          styles
 web/js/app.js          tabs and keyboard shortcuts
 web/js/store.js        state and API calls
 web/js/money.js        formatting and exact sums
-web/js/editor.js       dialogs: transaction, wallet, balance check, payment, plan
+web/js/editor.js       dialogs: transaction, wallet, payment, plan
 web/js/chart.js        pie, meter, segmented bar
 web/js/rangepicker.js  period picker: two months of calendar
 web/js/privacy.js      hide balances (the eye button)

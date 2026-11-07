@@ -1,4 +1,4 @@
-// Dialogs: transaction (expense / income / transfer / debt / balance adjustment), wallet, balance check,
+// Dialogs: transaction (expense / income / transfer / debt / balance adjustment), wallet,
 // monthly payment and its payment, plan, its savings and its purchase.
 import * as api from './api.js';
 import {
@@ -215,7 +215,7 @@ export function openTransaction(tx = null, preset = {}) {
       body.querySelector('[data-remove-line]').closest('.lines').classList.toggle('single', m.lines.length === 1);
     } else if (m.type === 'adjustment') {
       const w = wallet(m.wallet_id);
-      body.innerHTML = `<p class="hint">Made by a balance check of <b>${esc(w?.name ?? '?')}</b>: the difference between the app and the real balance.
+      body.innerHTML = `<p class="hint">The starting balance of <b>${esc(w?.name ?? '?')}</b>, recorded when the wallet was added.
         Above zero adds money, below zero takes it away.</p>
         <label>Difference ${amountField('adjust', m.adjust, currencyOfWallet(m.wallet_id))}</label>`;
     } else if (m.type === 'transfer') {
@@ -490,31 +490,6 @@ export function openWallet(w = null, preset = {}) {
     title: `Delete ${w?.name}?`,
     text: w?.has_transactions ? 'It has transactions, so it can only be archived.' : 'This can’t be undone.',
   }, () => act(() => api.del(`/api/wallets/${w.id}`), 'Deleted'));
-}
-
-/** "The real balance is …": records the difference as an adjustment. */
-export function openReconcile(w) {
-  const form = openForm(`
-    ${header(`Check the balance: ${w.name}`)}
-    <p class="hint">In the app: <b>${esc(fmtMoney(w.balance, w.currency))}</b>. Enter what the bank, the app or your pocket says;
-      the difference is recorded as a balance adjustment.</p>
-    <label>Actual balance ${amountField('balance', w.balance, w.currency)}</label>
-    <div class="grid">
-      <label>Date ${dateInput('date', today())}</label>
-      <label>Note <input name="note" placeholder="Balance check" ${maxlength('note')}></label>
-    </div>
-    ${footer({ ok: 'Check' })}`);
-  const input = form.querySelector('[name=balance]');
-  input.focus();
-  input.select();
-  onSubmit(form, async () => {
-    const balance = cleanAmount(input.value);
-    if (balance === null) return toast('Enter a number', 'error');
-    const date = readDate(form.querySelector('[name=date]'), 'Date');
-    if (date === undefined) return false;
-    return act(() => api.post(`/api/wallets/${w.id}/reconcile`, { balance, date, note: form.querySelector('[name=note]').value }),
-      (r) => (Number(r.diff) ? `Adjusted by ${fmtMoney(r.diff, w.currency, { sign: true })}` : 'The balance matches'));
-  });
 }
 
 // ---------- monthly payments ----------

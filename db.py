@@ -628,20 +628,6 @@ def delete_wallet(c, wallet_id):
     return {"ok": True}
 
 
-def reconcile_wallet(c, wallet_id, body):
-    """The real balance is X: record the difference as an adjustment."""
-    get_live(c.conn, "wallets", wallet_id, "Wallet")
-    wallet = wallet_with_currency(c.conn, wallet_id)
-    target = to_minor(body.get("balance"), wallet["decimals"], "Balance")
-    current = wallet_balances(c.conn, wallet_id).get(wallet_id, 0)
-    diff = target - current
-    if diff:
-        insert_transaction(c, "adjustment", as_date(body.get("date") or today(), "Date"),
-                           as_str(body.get("note"), "Note", LIMITS["note"]) or "Balance check",
-                           [{"wallet_id": wallet_id, "amount": diff, "category_id": None, "description": ""}])
-    return {"ok": True, "diff": from_minor(diff, wallet["decimals"])}
-
-
 # ---------- transactions ----------
 
 def clean_entries(conn, raw, tx_type, previous=()):
@@ -1300,7 +1286,7 @@ def plan_savings_list(conn, item_id):
 def flows(conn, date_from, date_to, by_month=False):
     """Income and spending by category: rows of (month?, category_id, kind, currency, total in minor units).
     A line counts as spending when its category is an expense one, or when it is an expense without a category;
-    the same for income. Transfers, debts and balance checks without a category don't count."""
+    the same for income. Transfers, debts and balance adjustments without a category don't count."""
     month = "substr(t.date, 1, 7)" if by_month else "''"
     return conn.execute(f"""
         SELECT {month} AS month, e.category_id, COALESCE(c.kind, t.type) AS kind, w.currency, SUM(e.amount) AS total

@@ -1,6 +1,6 @@
 // Wallets tab: your wallets by type with their balances, and the people you lend to or borrow from.
 import { store, moneyWallets, people } from '../store.js';
-import { openWallet, openReconcile, openTransaction } from '../editor.js';
+import { openWallet, openTransaction } from '../editor.js';
 import { fmtMoney, fmtBase, fmtBaseNum, toNum, baseCurrency } from '../money.js';
 import { getPrefs, setPrefs } from '../prefs.js';
 import { esc, freshBox, paint } from '../util.js';
@@ -23,7 +23,6 @@ function walletRow(w) {
     </div>
     <div class="wallet-balance"><b class="${negative ? 'neg' : ''}">${secret(esc(fmtMoney(w.balance, w.currency)))}</b>${inBase(w)}</div>
     <div class="plan-actions">
-      <button type="button" data-act="reconcile" title="Enter the real balance; the difference is recorded">${icon('scale', 14)} Check</button>
       <button type="button" class="icon" data-act="history" title="Its transactions" aria-label="Transactions of ${esc(w.name)}">${icon('search')}</button>
       <button type="button" class="icon" data-act="edit" title="Edit" aria-label="Edit ${esc(w.name)}">${icon('pencil')}</button>
     </div>
@@ -100,7 +99,6 @@ export function render(view) {
       case 'add-wallet': return openWallet();
       case 'add-person': return openWallet(null, { type: 'debt' });
       case 'edit': return openWallet(w);
-      case 'reconcile': return openReconcile(w);
       case 'give':
       case 'get': return openTransaction(null, { type: 'debt', direction: btn.dataset.act, person_id: w.id });
       case 'history':

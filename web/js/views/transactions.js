@@ -22,7 +22,7 @@ export function showAllTime() {
   allTime = true;
 }
 
-/** What a line counts as in totals: spending, income, or nothing (a transfer, a debt, a balance check). */
+/** What a line counts as in totals: spending, income, or nothing (a transfer, a debt, a balance adjustment). */
 function lineKind(tx, e) {
   const c = e.category_id != null ? categoryById(e.category_id) : null;
   if (c) return c.kind;

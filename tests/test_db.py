@@ -138,13 +138,6 @@ class Wallets(Base):
         with self.assertRaises(ApiError):  # no such wallet
             self.tx("expense", [{"wallet_id": 999, "amount": "-1"}])
 
-    def test_reconcile(self):
-        cash = self.wallet("Cash", type_="cash", balance="100")
-        result = self.w(db.reconcile_wallet, cash, {"balance": "93.40"})
-        self.assertEqual(result["diff"], "-6.60")
-        self.assertEqual(self.balance(cash), "93.40")
-        self.assertEqual(self.w(db.reconcile_wallet, cash, {"balance": "93.4"})["diff"], "0.00")
-
     def test_delete_only_without_transactions(self):
         card = self.wallet("Card", balance="1")
         with self.assertRaises(ApiError):

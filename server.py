@@ -171,7 +171,6 @@ ROUTES = [
     ("POST", r"/api/wallets", change(db.create_wallet)),
     ("PUT", r"/api/wallets/(\d+)", change(db.update_wallet)),
     ("DELETE", r"/api/wallets/(\d+)", change(db.delete_wallet, takes_body=False)),
-    ("POST", r"/api/wallets/(\d+)/reconcile", change(db.reconcile_wallet)),
 
     ("POST", r"/api/categories", change(db.create_category)),
     ("PUT", r"/api/categories/(\d+)", change(db.update_category)),
