@@ -1,8 +1,8 @@
-// Plans tab: monthly payments, planned expenses with their savings, and the safety cushion.
+// Plans tab: monthly payments, budgets, planned expenses and the safety cushion.
 import * as api from '../api.js';
 import { store, act, walletById, categoryById } from '../store.js';
 import {
-  openRecurring, openPay, openPlanned, openSave, openBuy, openTransactionById, openBudget, PRIORITY_NAMES,
+  openRecurring, openPay, openPlanned, openBuy, openTransactionById, openBudget, PRIORITY_NAMES,
 } from '../editor.js';
 import { confirmDialog } from '../dialogs.js';
 import { fmtMoney, fmtBase, fmtBaseNum, toNum, symbolOf, cleanAmount, baseCurrency } from '../money.js';
@@ -56,8 +56,6 @@ function recurringRow(r, month) {
 }
 
 function plannedRow(p) {
-  const saved = toNum(p.saved);
-  const amount = toNum(p.amount);
   const overdue = p.due && p.due < store.state.today;
   return `<li class="row" data-planned="${p.id}">
     <span class="avatar">${icon('bag')}</span>
@@ -65,14 +63,9 @@ function plannedRow(p) {
       <div class="row-title">${esc(p.name)}</div>
       <div class="row-sub"><span class="tag prio ${p.priority}" title="Priority">${PRIORITY_NAMES[p.priority]}</span>${categoryTag(p.category_id)}${p.due ? `<span class="${overdue ? 'neg' : 'muted'}">by ${esc(fmtDate(p.due))}</span>` : ''}
         ${p.notes ? `<span class="muted notes" title="${esc(p.notes)}">${icon('info', 12)} notes</span>` : ''}</div>
-      <div class="saving">
-        ${meter(saved, amount, { label: `Saved for ${p.name}` })}
-        <span class="muted small">${saved ? `${esc(fmtMoney(p.saved, p.currency))} saved · ${Math.min(100, Math.round((saved / amount) * 100))}%` : 'nothing saved yet'}</span>
-      </div>
     </div>
     <div class="row-value"><b>${esc(fmtMoney(p.amount, p.currency))}</b>${inBase(p.amount, p.currency, p.amount_base)}</div>
     <div class="row-actions">
-      <button type="button" data-act="save" title="Put money aside for it, or take some back">${icon('piggy', 14)} Save</button>
       <button type="button" data-act="buy" title="Record the purchase">Bought</button>
       <button type="button" class="icon" data-act="edit-planned" title="Edit" aria-label="Edit ${esc(p.name)}">${icon('pencil')}</button>
       <button type="button" class="icon" data-act="drop" title="Drop: not needed any more" aria-label="Drop ${esc(p.name)}">${icon('x')}</button>
@@ -88,7 +81,6 @@ export function render(view) {
   const paused = s.recurring.filter((r) => !r.is_active);
   const open = s.planned.filter((p) => p.status === 'open');
   const closed = s.planned.filter((p) => p.status !== 'open');
-  const missing = toNum(t.planned_missing);
   const cushionWallets = s.wallets.filter((w) => w.is_cushion && w.type !== 'debt');
   const overBudget = s.budgets.filter((b) => b.share > 1).length;
 
@@ -131,13 +123,9 @@ export function render(view) {
           <button type="button" data-act="add-planned">${icon('plus')} Add</button>
         </header>
         ${open.length ? `
-          <div class="figure-line">
-            <span><b>${esc(fmtBase(t.planned_total))}</b> in total</span>
-            <span class="muted">saved ${esc(fmtBase(t.planned_saved))} · missing ${esc(fmtBase(t.planned_missing))}</span>
-          </div>
-          ${missing <= 0 ? `<p class="hint">${icon('check', 14)} Everything is saved for.</p>` : ''}
+          <div class="figure-line"><span><b>${esc(fmtBase(t.planned_total))}</b> in total</span></div>
           <ul class="list">${open.map(plannedRow).join('')}</ul>`
-          : '<p class="muted">A new laptop, dental treatment, a trip: what you will spend on. See the total, and put money aside for each.</p>'}
+          : '<p class="muted">A new laptop, dental treatment, a trip: what you will spend on, and how much it all adds up to.</p>'}
         ${closed.length ? `<details class="closed"><summary>Bought and dropped <span class="muted">(${closed.length})</span></summary>
           <ul class="list">${closed.map((p) => `<li class="row inactive" data-planned="${p.id}">
             <span class="avatar">${icon(p.status === 'done' ? 'check' : 'x')}</span>
@@ -185,11 +173,10 @@ export function render(view) {
       case 'edit-budget': return openBudget(s.budgets.find((b) => b.category_id === Number(btn.closest('[data-budget]').dataset.budget)));
       case 'add-planned': return openPlanned();
       case 'edit-planned': return openPlanned(plan);
-      case 'save': return openSave(plan);
       case 'buy': return openBuy(plan);
       case 'open-purchase': return openTransactionById(plan.purchase_tx_id);
       case 'drop':
-        if (await confirmDialog({ title: `Drop “${plan.name}”?`, text: 'It moves to “Bought and dropped”; what was saved for it no longer counts as saved. You can open it again later.', ok: 'Drop' })) {
+        if (await confirmDialog({ title: `Drop “${plan.name}”?`, text: 'It moves to “Bought and dropped”. You can open it again later.', ok: 'Drop' })) {
           await act(() => api.post(`/api/planned/${plan.id}/drop`), `Dropped: ${plan.name}`);
         }
         return undefined;

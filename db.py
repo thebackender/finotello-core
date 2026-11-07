@@ -196,9 +196,14 @@ def migration_5(conn):
     )""")
 
 
+def migration_6(conn):
+    # Money put aside for plans is gone: a plan is just what it will cost.
+    conn.execute("DROP TABLE IF EXISTS plan_savings")
+
+
 # Migrations by number: MIGRATIONS[n] brings the database from version n to n + 1 (PRAGMA user_version).
 # Add new ones at the end; never change one that has shipped.
-MIGRATIONS = [migration_1, migration_2, migration_3, migration_4, migration_5]
+MIGRATIONS = [migration_1, migration_2, migration_3, migration_4, migration_5, migration_6]
 VARIABLE_AVERAGE_OF = 3  # a varying monthly payment is expected to cost the average of this many last payments
 
 
@@ -1184,7 +1189,7 @@ def pay_recurring(c, item_id, body):
     return {"ok": True, "id": tx_id}
 
 
-# ---------- plans and their savings ----------
+# ---------- plans ----------
 
 def clean_planned(conn, body, current=None):
     get = lambda key, default=None: body.get(key, current[key] if current else default)  # noqa: E731
@@ -1206,14 +1211,7 @@ def clean_planned(conn, body, current=None):
     if values["category_id"] is not None and (not current or values["category_id"] != current["category_id"]):
         if get_live(conn, "categories", values["category_id"], "Category")["kind"] != "expense":
             raise ApiError("Pick an expense category")
-    if current and values["currency"] != current["currency"] and saved_minor(conn, current["id"]):
-        raise ApiError("Money is already saved for this plan in its currency: take it back first")
     return values
-
-
-def saved_minor(conn, planned_id):
-    return conn.execute("SELECT COALESCE(SUM(amount), 0) FROM plan_savings WHERE planned_id = ?",
-                        (planned_id,)).fetchone()[0]
 
 
 def create_planned(c, body):
@@ -1240,25 +1238,6 @@ def delete_planned(c, item_id):
     return {"ok": True}
 
 
-def save_for_plan(c, item_id, body):
-    """Put money aside for a plan (or take it back, below zero). The money stays in its wallets:
-    this only marks it as put aside for the plan."""
-    plan = get_live(c.conn, "planned", item_id, "Plan")
-    if plan["status"] != "open":
-        raise ApiError("This plan is closed")
-    decimals = get_currency(c.conn, plan["currency"])["decimals"]
-    amount = to_minor(body.get("amount"), decimals)
-    if not amount:
-        raise ApiError("Amount can't be zero")
-    saved = saved_minor(c.conn, item_id)
-    if saved + amount < 0:
-        raise ApiError(f"Only {from_minor(saved, decimals)} {plan['currency']} is saved for this plan")
-    c.insert("plan_savings", {"planned_id": item_id, "date": as_date(body.get("date") or today(), "Date"),
-                              "amount": amount, "note": as_str(body.get("note"), "Note", LIMITS["note"]),
-                              "created": now()})
-    return {"ok": True, "saved": from_minor(saved + amount, decimals)}
-
-
 def buy_planned(c, item_id, body):
     plan = get_live(c.conn, "planned", item_id, "Plan")
     if plan["status"] != "open":
@@ -1275,14 +1254,6 @@ def drop_planned(c, item_id):
         raise ApiError("This plan is closed")
     c.update("planned", item_id, {"status": "dropped", "done_at": today()})
     return {"ok": True}
-
-
-def plan_savings_list(conn, item_id):
-    plan = get_live(conn, "planned", item_id, "Plan")
-    decimals = get_currency(conn, plan["currency"])["decimals"]
-    return {"savings": [{"id": r["id"], "date": r["date"], "amount": from_minor(r["amount"], decimals), "note": r["note"]}
-                        for r in conn.execute("SELECT * FROM plan_savings WHERE planned_id = ? ORDER BY date DESC, id DESC",
-                                              (item_id,))]}
 
 
 # ---------- reports ----------
@@ -1546,26 +1517,20 @@ def get_state(conn, day=None):
                 monthly_left += expected
 
     planned = []
-    planned_total = planned_saved = planned_missing = 0
-    for r in conn.execute("""SELECT p.*, COALESCE(SUM(s.amount), 0) AS saved FROM planned p
-                             LEFT JOIN plan_savings s ON s.planned_id = p.id
-                             WHERE p.is_deleted = 0 GROUP BY p.id
+    planned_total = 0
+    for r in conn.execute("""SELECT * FROM planned p WHERE p.is_deleted = 0
                              ORDER BY p.status = 'open' DESC, CASE p.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
                                       p.due IS NULL, p.due, p.id"""):
         amount_base = rates.to_base(r["amount"], r["currency"])
-        saved_base = rates.to_base(r["saved"], r["currency"])
         planned.append({
             "id": r["id"], "name": r["name"], "amount": rates.fmt(r["amount"], r["currency"]),
             "currency": r["currency"], "amount_base": rates.fmt_base(amount_base),
-            "saved": rates.fmt(r["saved"], r["currency"]), "saved_base": rates.fmt_base(saved_base),
             "category_id": r["category_id"], "priority": r["priority"], "due": r["due"], "notes": r["notes"],
             "status": r["status"], "created": r["created"], "done_at": r["done_at"],
             "purchase_tx_id": None,
         })
         if r["status"] == "open":
             planned_total += amount_base
-            planned_saved += saved_base
-            planned_missing += max(0, amount_base - saved_base)
     purchases = dict(conn.execute("""SELECT planned_id, MAX(id) FROM transactions
                                      WHERE is_deleted = 0 AND planned_id IS NOT NULL GROUP BY planned_id""").fetchall())
     for p in planned:
@@ -1609,15 +1574,12 @@ def get_state(conn, day=None):
         "cushion_saved": cushion_saved,
         "cushion_target": target,
         "cushion_left": max(0, target - cushion_saved),
-        "earmarked": planned_saved,
         "month_income": month_flows["income"],
         "month_expense": month_flows["expense"],
         "monthly_required": monthly_required,
         "monthly_paid": monthly_paid,
         "monthly_left": monthly_left,
         "planned_total": planned_total,
-        "planned_saved": planned_saved,
-        "planned_missing": planned_missing,
     }
     totals = {k: ({t: rates.fmt_base(v) for t, v in val.items()} if isinstance(val, dict) else rates.fmt_base(val))
               for k, val in totals.items()}
@@ -1650,7 +1612,6 @@ def export_json(conn):
         "categories": rows("SELECT * FROM categories ORDER BY id"),
         "recurring": rows("SELECT * FROM recurring ORDER BY id"),
         "planned": rows("SELECT * FROM planned ORDER BY id"),
-        "plan_savings": rows("SELECT * FROM plan_savings ORDER BY id"),
         "transactions": rows("SELECT * FROM transactions ORDER BY date, id"),
         "entries": rows("SELECT * FROM entries ORDER BY id"),
         "templates": rows("SELECT * FROM templates ORDER BY id"),
@@ -1664,9 +1625,6 @@ def export_json(conn):
     for table in ("recurring", "planned"):
         for item in data[table]:
             item["amount"] = from_minor(item["amount"], decimals[item["currency"]])
-    plan_currency = {p["id"]: p["currency"] for p in data["planned"]}
-    for item in data["plan_savings"]:
-        item["amount"] = from_minor(item["amount"], decimals[plan_currency[item["planned_id"]]])
     for item in data["entries"]:
         item["currency"] = wallet_currency[item["wallet_id"]]
         item["amount"] = from_minor(item["amount"], decimals[item["currency"]])

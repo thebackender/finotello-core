@@ -1,5 +1,5 @@
 // Dialogs: transaction (expense / income / transfer / debt / balance adjustment), wallet,
-// monthly payment and its payment, plan, its savings and its purchase.
+// monthly payment and its payment, plan and its purchase.
 import * as api from './api.js';
 import {
   store, act, walletById, walletItems, categoryById, categoryItems, createCategory, moneyWallets,
@@ -743,14 +743,12 @@ export const PRIORITY_NAMES = { high: 'High', medium: 'Medium', low: 'Low' };
 
 export function openPlanned(item = null) {
   const currency = item?.currency ?? baseCurrency();
-  const locked = item && Number(item.saved) !== 0;
   const form = openForm(`
     ${header(item ? 'Edit plan' : 'New planned expense')}
     <label>What <input name="name" value="${esc(item?.name ?? '')}" placeholder="New laptop, dental treatment…" ${maxlength('name')}></label>
     <div class="grid">
       <label>Expected cost ${amountField('amount', item?.amount ?? '', currency)}</label>
-      <label>Currency <select name="currency" ${locked ? 'disabled' : ''}>${currencyOptions(currency)}</select>
-        ${locked ? '<span class="field-hint">Fixed: money is saved for it in this currency. Take it back to change.</span>' : ''}</label>
+      <label>Currency <select name="currency">${currencyOptions(currency)}</select></label>
       <label>Priority <select name="priority">${Object.entries(PRIORITY_NAMES).map(([v, n]) => opt(v, n, item?.priority ?? 'medium')).join('')}</select></label>
       <label>By <span class="muted">(optional)</span> ${dateInput('due', item?.due)}</label>
     </div>
@@ -770,8 +768,7 @@ export function openPlanned(item = null) {
     if (amount === null) return false;
     const due = readDate(form.querySelector('[name=due]'), 'By');
     if (due === undefined) return false;
-    const payload = { name: data.name, amount, priority: data.priority, due, notes: data.notes, category_id: Number(data.category_id) || null };
-    if (!locked) payload.currency = data.currency;
+    const payload = { name: data.name, amount, currency: data.currency, priority: data.priority, due, notes: data.notes, category_id: Number(data.category_id) || null };
     if (data.reopen) payload.status = 'open';
     return item
       ? act(() => api.put(`/api/planned/${item.id}`, payload), 'Saved')
@@ -779,46 +776,6 @@ export function openPlanned(item = null) {
   });
   onRemove(form, { title: `Delete “${item?.name}”?`, text: 'This can’t be undone.' },
     () => act(() => api.del(`/api/planned/${item.id}`), 'Deleted'));
-}
-
-/** Put money aside for a plan, or take it back. */
-export async function openSave(item) {
-  let mode = 'in';
-  const form = openForm(`
-    ${header(`Savings: ${item.name}`)}
-    <p class="hint">Saved <b>${esc(fmtMoney(item.saved, item.currency))}</b> of ${esc(fmtMoney(item.amount, item.currency))}.
-      The money stays in your wallets; this only marks it as put aside for the plan.</p>
-    <div class="segmented">
-      <button type="button" data-mode="in" class="on">${icon('plus')} Put aside</button>
-      <button type="button" data-mode="out">${icon('minus')} Take back</button>
-    </div>
-    <div class="grid">
-      <label>Amount ${amountField('amount', '', item.currency)}</label>
-      <label>Date ${dateInput('date', today())}</label>
-    </div>
-    <label>Note <input name="note" ${maxlength('note')}></label>
-    <div class="savings-history"></div>
-    ${footer({ ok: 'Save' })}`);
-  form.querySelector('[name=amount]').focus();
-  form.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-mode]');
-    if (!b) return;
-    mode = b.dataset.mode;
-    form.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
-  });
-  api.get(`/api/planned/${item.id}/savings`).then(({ savings }) => {
-    if (!savings.length) return;
-    form.querySelector('.savings-history').innerHTML = `<details><summary>History <span class="muted">(${savings.length})</span></summary>
-      <ul class="history">${savings.map((s) => `<li><time>${fmtDate(s.date)}</time> ${esc(fmtMoney(s.amount, item.currency, { sign: true }))}${s.note ? ` · ${esc(s.note)}` : ''}</li>`).join('')}</ul></details>`;
-  }).catch(() => {});
-  onSubmit(form, async () => {
-    const amount = readAmount(form.querySelector('[name=amount]'));
-    if (amount === null) return false;
-    const date = readDate(form.querySelector('[name=date]'), 'Date');
-    if (date === undefined) return false;
-    return act(() => api.post(`/api/planned/${item.id}/save`, { amount: mode === 'in' ? amount : negate(amount), date, note: form.querySelector('[name=note]').value }),
-      (r) => `Saved for “${item.name}”: ${fmtMoney(r.saved, item.currency)}`);
-  });
 }
 
 export function openBuy(item) {

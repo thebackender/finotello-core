@@ -85,8 +85,6 @@ export function render(view) {
         <section class="card">
           <header class="card-head"><h3>Planned expenses</h3><a href="#plans">All</a></header>
           <div class="figure-line"><b>${esc(fmtBase(t.planned_total))}</b><span class="muted">in ${openPlans.length} plan${openPlans.length === 1 ? '' : 's'}</span></div>
-          ${toNum(t.planned_total) ? meter(toNum(t.planned_saved), toNum(t.planned_total), { label: 'Saved for plans' }) : ''}
-          <div class="muted small">Saved ${esc(fmtBase(t.planned_saved))} · missing ${esc(fmtBase(t.planned_missing))}</div>
           ${openPlans.length ? `<ul class="list compact">${openPlans.slice(0, 4).map((p) => `<li>
             <span class="grow">${esc(p.name)}</span><span class="num">${esc(fmtBase(p.amount_base))}</span></li>`).join('')}</ul>`
             : '<p class="muted small">Nothing planned. Add a purchase or a treatment you are saving for.</p>'}

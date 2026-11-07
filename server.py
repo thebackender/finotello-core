@@ -152,7 +152,6 @@ ROUTES = [
     ("GET", r"/api/state", lambda b, i, q: state()),
     ("GET", r"/api/transactions", lambda b, i, q: database.read(db.list_transactions, q)),
     ("GET", r"/api/report", lambda b, i, q: database.read(db.get_report, q)),
-    ("GET", r"/api/planned/(\d+)/savings", lambda b, i, q: database.read(db.plan_savings_list, i)),
     ("GET", r"/api/export\.json", lambda b, i, q: download(
         json.dumps(database.read(db.export_json), ensure_ascii=False, indent=2),
         f"finotello-{date.today().isoformat()}.json", "application/json; charset=utf-8")),
@@ -189,7 +188,6 @@ ROUTES = [
     ("POST", r"/api/planned", change(db.create_planned)),
     ("PUT", r"/api/planned/(\d+)", change(db.update_planned)),
     ("DELETE", r"/api/planned/(\d+)", change(db.delete_planned, takes_body=False)),
-    ("POST", r"/api/planned/(\d+)/save", change(db.save_for_plan)),
     ("POST", r"/api/planned/(\d+)/buy", change(db.buy_planned)),
     ("POST", r"/api/planned/(\d+)/drop", change(db.drop_planned, takes_body=False)),
 

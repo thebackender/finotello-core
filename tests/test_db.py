@@ -100,6 +100,8 @@ class Seed(Base):
                 "SELECT 1 FROM sqlite_master WHERE name = 'undo_log'").fetchone())  # migration 3 dropped it
             self.assertEqual(upgraded.read(db.get_state, DAY)["config"]["report_from"], "")  # migration 4
             self.assertEqual(upgraded.read(db.get_state, DAY)["templates"], [])  # migration 5
+            self.assertIsNone(upgraded.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = 'plan_savings'").fetchone())  # migration 6 dropped it
         finally:
             upgraded.close()
 
@@ -378,25 +380,21 @@ class Plans(Base):
         self.w(db.pay_recurring, item, {"wallet_id": card, "amount": "4600"})
         self.assertEqual(self.balance(card), "95400.00")
 
-    def test_savings_and_buy(self):
+    def test_plan_and_buy(self):
         card = self.wallet("Card", balance="3000")
         reserve = self.wallet("Reserve", type_="bank", is_cushion=True, balance="1000")
         self.w(db.update_config, {"cushion_target": "2500"})
         dentist = self.cat("Health:Dentist")
         plan = self.w(db.create_planned, {"name": "Teeth", "amount": "1500", "currency": "USD",
                                                  "category_id": dentist})["id"]
-        self.w(db.save_for_plan, plan, {"amount": "600"})
-        with self.assertRaises(ApiError):
-            self.w(db.save_for_plan, plan, {"amount": "-700"})
         totals = self.state()["totals"]
         self.assertEqual(totals["cushion_saved"], "1000.00")
         self.assertEqual(totals["cushion_left"], "1500.00")
-        self.assertEqual(totals["planned_missing"], "900.00")
-        self.assertEqual(totals["planned_saved"], "600.00")
+        self.assertEqual(totals["planned_total"], "1500.00")
         self.w(db.buy_planned, plan, {"wallet_id": card, "amount": "1450"})
         state = self.state()
         self.assertEqual(state["planned"][0]["status"], "done")
-        self.assertEqual(state["totals"]["earmarked"], "0.00")
+        self.assertEqual(state["totals"]["planned_total"], "0.00")
         self.assertEqual(self.balance(card), "1550.00")
         # deleting the purchase opens the plan again
         self.w(db.delete_transaction, state["planned"][0]["purchase_tx_id"])

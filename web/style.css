@@ -448,8 +448,6 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
 .editor details[open] summary { margin-bottom: 12px; }
 .editor .hint { margin: 0; }
 .top-pad { margin-top: 26px; }
-.history { margin: 0; padding-left: 18px; color: var(--foreground-2); font-size: 13px; }
-.history time { color: var(--muted-foreground); margin-right: 6px; font-variant-numeric: tabular-nums; }
 
 #confirm-dialog { width: min(440px, calc(100vw - 32px)); }
 .confirm { display: flex; flex-direction: column; gap: 8px; padding: 24px; }
@@ -602,7 +600,6 @@ dialog:has(.editor.narrow) { width: min(500px, calc(100vw - 32px)); }
 
 .plans { display: flex; flex-direction: column; gap: 16px; }
 .plans .card + .card { margin-top: 0; }
-.saving { display: grid; grid-template-columns: minmax(80px, 220px) auto; gap: 10px; align-items: center; margin-top: 8px; }
 .notes { display: inline-flex; align-items: center; gap: 3px; cursor: help; }
 .cushion-target { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .cushion-target label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: var(--foreground-2); }
