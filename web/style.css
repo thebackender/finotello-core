@@ -732,10 +732,7 @@ table.currencies td { vertical-align: middle; }
   .hero { font-size: 40px; }
 }
 
-/* Overview: free money under the total, and the income and spending part below the cards */
-.free-line { margin-top: 10px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
-.free-line b { font-weight: 600; }
-.free-line .muted { font-size: 13px; }
+/* Overview: the income and spending part below the cards */
 .report-part { margin-top: 28px; }
 .section-head h2 { margin: 0 8px 0 0; }
 .card-total { font-weight: 600; font-variant-numeric: tabular-nums; }

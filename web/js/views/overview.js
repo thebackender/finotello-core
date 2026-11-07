@@ -54,10 +54,6 @@ export function render(view) {
             ${toNum(t.i_owe) ? `<span>You owe <b>${esc(fmtBase(t.i_owe))}</b></span>` : ''}
             <span>With debts <b>${esc(fmtBase(t.net))}</b></span>
           </div>` : ''}
-          <div class="free-line" title="Money in your wallets minus the safety cushion and what is saved for plans">
-            Free money <b class="${toNum(t.free) < 0 ? 'neg' : ''}">${esc(fmtBase(t.free))}</b>
-            <span class="muted">after the cushion and plan savings</span>
-          </div>
         </div>
         <div class="money-split">
           ${segmentedBar(parts, 'Money by wallet type')}

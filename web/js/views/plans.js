@@ -88,7 +88,6 @@ export function render(view) {
   const paused = s.recurring.filter((r) => !r.is_active);
   const open = s.planned.filter((p) => p.status === 'open');
   const closed = s.planned.filter((p) => p.status !== 'open');
-  const free = toNum(t.free);
   const missing = toNum(t.planned_missing);
   const cushionWallets = s.wallets.filter((w) => w.is_cushion && w.type !== 'debt');
 
@@ -123,9 +122,7 @@ export function render(view) {
             <span><b>${esc(fmtBase(t.planned_total))}</b> in total</span>
             <span class="muted">saved ${esc(fmtBase(t.planned_saved))} · missing ${esc(fmtBase(t.planned_missing))}</span>
           </div>
-          <p class="hint">${missing <= 0 ? `${icon('check', 14)} Everything is saved for.`
-            : free >= missing ? `Your free money (${esc(fmtBase(t.free))}) covers what's missing.`
-              : `Free money: <b>${esc(fmtBase(t.free))}</b>, ${free > 0 ? `short by <b>${esc(fmtBaseNum(missing - free))}</b>` : 'none left after the cushion and savings'}.`}</p>
+          ${missing <= 0 ? `<p class="hint">${icon('check', 14)} Everything is saved for.</p>` : ''}
           <ul class="plan-list">${open.map(plannedRow).join('')}</ul>`
           : '<p class="muted">A new laptop, dental treatment, a trip: what you will spend on. See the total, and put money aside for each.</p>'}
         ${closed.length ? `<details class="closed"><summary>Bought and dropped <span class="muted">(${closed.length})</span></summary>
@@ -177,7 +174,7 @@ export function render(view) {
       case 'buy': return openBuy(plan);
       case 'open-purchase': return openTransactionById(plan.purchase_tx_id);
       case 'drop':
-        if (await confirmDialog({ title: `Drop “${plan.name}”?`, text: 'It moves to “Bought and dropped”; what was saved for it is freed. You can open it again later.', ok: 'Drop' })) {
+        if (await confirmDialog({ title: `Drop “${plan.name}”?`, text: 'It moves to “Bought and dropped”; what was saved for it no longer counts as saved. You can open it again later.', ok: 'Drop' })) {
           await act(() => api.post(`/api/planned/${plan.id}/drop`), `Dropped: ${plan.name}`);
         }
         return undefined;

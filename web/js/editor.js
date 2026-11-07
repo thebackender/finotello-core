@@ -671,7 +671,7 @@ export async function openSave(item) {
   const form = openForm(`
     ${header(`Savings: ${item.name}`)}
     <p class="hint">Saved <b>${esc(fmtMoney(item.saved, item.currency))}</b> of ${esc(fmtMoney(item.amount, item.currency))}.
-      The money stays in your wallets; it just stops counting as free.</p>
+      The money stays in your wallets; this only marks it as put aside for the plan.</p>
     <div class="segmented">
       <button type="button" data-mode="in" class="on">${icon('plus')} Put aside</button>
       <button type="button" data-mode="out">${icon('minus')} Take back</button>
@@ -708,7 +708,7 @@ export async function openSave(item) {
 export function openBuy(item) {
   openSpend({
     title: `Bought: ${item.name}`,
-    hint: `Planned: <b>${esc(fmtMoney(item.amount, item.currency))}</b>. Records the expense and closes the plan; what was saved for it is freed.`,
+    hint: `Planned: <b>${esc(fmtMoney(item.amount, item.currency))}</b>. Records the expense and closes the plan.`,
     amount: item.amount, currency: item.currency, walletId: null, categoryId: item.category_id, ok: 'Record purchase',
     send: (body) => act(() => api.post(`/api/planned/${item.id}/buy`, body), `Bought: ${item.name}`),
   });

@@ -378,7 +378,7 @@ class Plans(Base):
         self.w(db.pay_recurring, item, {"wallet_id": card, "amount": "4600"})
         self.assertEqual(self.balance(card), "95400.00")
 
-    def test_savings_buy_and_free_money(self):
+    def test_savings_and_buy(self):
         card = self.wallet("Card", balance="3000")
         reserve = self.wallet("Reserve", type_="bank", is_cushion=True, balance="1000")
         self.w(db.update_config, {"cushion_target": "2500"})
@@ -392,7 +392,7 @@ class Plans(Base):
         self.assertEqual(totals["cushion_saved"], "1000.00")
         self.assertEqual(totals["cushion_left"], "1500.00")
         self.assertEqual(totals["planned_missing"], "900.00")
-        self.assertEqual(totals["free"], "2400.00")  # 4000 - 1000 cushion - 600 saved
+        self.assertEqual(totals["planned_saved"], "600.00")
         self.w(db.buy_planned, plan, {"wallet_id": card, "amount": "1450"})
         state = self.state()
         self.assertEqual(state["planned"][0]["status"], "done")
@@ -409,7 +409,6 @@ class Plans(Base):
         totals = self.state()["totals"]
         self.assertEqual(totals["cushion_saved"], "700.00")
         self.assertEqual(totals["cushion_left"], "300.00")
-        self.assertEqual(totals["free"], "0.00")
 
 
 class Currencies(Base):

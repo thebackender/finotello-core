@@ -1239,7 +1239,7 @@ def delete_planned(c, item_id):
 
 def save_for_plan(c, item_id, body):
     """Put money aside for a plan (or take it back, below zero). The money stays in its wallets:
-    this only marks it as taken, so it no longer counts as free."""
+    this only marks it as put aside for the plan."""
     plan = get_live(c.conn, "planned", item_id, "Plan")
     if plan["status"] != "open":
         raise ApiError("This plan is closed")
@@ -1505,7 +1505,6 @@ def get_state(conn, day=None):
     target = int(cfg["cushion_target"])
     # Without wallets marked for the cushion, all your money counts toward it.
     cushion_saved = cushion if has_cushion_wallets else money
-    reserved = cushion_saved if has_cushion_wallets else min(max(target, 0), max(money, 0))
     used_codes = {w["currency"] for w in wallets} | {r["currency"] for r in recurring if r["is_active"]} | \
                  {p["currency"] for p in planned if p["status"] == "open"}
     missing_rates = sorted(c["code"] for c in currencies
@@ -1520,7 +1519,6 @@ def get_state(conn, day=None):
         "cushion_target": target,
         "cushion_left": max(0, target - cushion_saved),
         "earmarked": planned_saved,
-        "free": money - reserved - planned_saved,
         "month_income": month_flows["income"],
         "month_expense": month_flows["expense"],
         "monthly_required": monthly_required,
