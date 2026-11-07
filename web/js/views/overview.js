@@ -8,6 +8,7 @@ import { esc, freshBox, fmtMonth, paint, PALETTE } from '../util.js';
 import { icon, WALLET_ICONS } from '../icons.js';
 import { missingRatesBanner } from './parts.js';
 import { renderReports } from './reports.js';
+import { secret, eyeButton } from '../privacy.js';
 
 // Wallet types take the first three categorical slots, always in this order.
 const TYPE_PARTS = [
@@ -47,19 +48,19 @@ export function render(view) {
       ${hasWallets ? '' : welcome()}
       <section class="card money">
         <div class="money-main">
-          <div class="tile-label">Money in your wallets</div>
-          <div class="hero">${esc(fmtBase(t.money))}</div>
+          <div class="tile-label">Money in your wallets ${eyeButton()}</div>
+          <div class="hero">${secret(esc(fmtBase(t.money)))}</div>
           ${hasDebts ? `<div class="debt-line">
-            ${toNum(t.owed_to_me) ? `<span>They owe you <b>${esc(fmtBase(t.owed_to_me))}</b></span>` : ''}
-            ${toNum(t.i_owe) ? `<span>You owe <b>${esc(fmtBase(t.i_owe))}</b></span>` : ''}
-            <span>With debts <b>${esc(fmtBase(t.net))}</b></span>
+            ${toNum(t.owed_to_me) ? `<span>They owe you <b>${secret(esc(fmtBase(t.owed_to_me)))}</b></span>` : ''}
+            ${toNum(t.i_owe) ? `<span>You owe <b>${secret(esc(fmtBase(t.i_owe)))}</b></span>` : ''}
+            <span>With debts <b>${secret(esc(fmtBase(t.net)))}</b></span>
           </div>` : ''}
         </div>
         <div class="money-split">
           ${segmentedBar(parts, 'Money by wallet type')}
           <ul class="split-list">
             ${parts.map((p) => `<li><i class="swatch" style="--c:${paint(p.color)}"></i>${icon(WALLET_ICONS[p.type], 14, 'muted')}
-              <span>${p.name}</span><span class="spacer"></span><b>${esc(fmtBase(t.by_type[p.type]))}</b></li>`).join('')}
+              <span>${p.name}</span><span class="spacer"></span><b>${secret(esc(fmtBase(t.by_type[p.type])))}</b></li>`).join('')}
           </ul>
         </div>
       </section>

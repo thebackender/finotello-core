@@ -3,6 +3,7 @@ import { store, reload, subscribe, backupNow } from './store.js';
 import { openTransaction } from './editor.js';
 import { esc, today, addDays, fmtDate, fmtTs } from './util.js';
 import { toggleTheme } from './theme.js';
+import { toggleBalances } from './privacy.js';
 import * as overview from './views/overview.js';
 import * as transactions from './views/transactions.js';
 import * as plans from './views/plans.js';
@@ -51,6 +52,10 @@ subscribe(() => {
 });
 window.addEventListener('hashchange', route);
 window.addEventListener('themechange', route); // charts pick their colors in JS
+window.addEventListener('balanceschange', route);
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-toggle-balances]')) toggleBalances();
+});
 
 /** New transaction with the current tab's defaults (e.g. the wallet open in a filter). */
 const newTransaction = () => openTransaction(null, VIEWS[current].newPreset?.() ?? {});

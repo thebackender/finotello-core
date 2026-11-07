@@ -25,7 +25,7 @@ Tests: `python3 -m unittest discover tests`
 
 | Key | Tab | What it does |
 |---|---|---|
-| 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe. Under it, spending and income for a period you pick on a calendar (click the start and end days, or type the dates; it is kept in the database; "This month" goes back to the current month, which is also the default): spending by category as a pie (the six largest; smaller ones fold into "Other"; the list next to it gives each amount and share) and income by source as bars, each with its total. Click a category or "Other" to see what's inside. Changing the period redraws only this part. At the bottom, monthly payments, plans and the cushion at a glance |
+| 1 | Overview | Money in all your wallets in the base currency, split into bank / cash / crypto; what people owe you and what you owe. The eye button next to it hides these balances (here and in Wallets) behind asterisks, e.g. when someone looks at your screen; it stays hidden until you click it again. Under it, spending and income for a period you pick on a calendar (click the start and end days, or type the dates; it is kept in the database; "This month" goes back to the current month, which is also the default): spending by category as a pie (the six largest; smaller ones fold into "Other"; the list next to it gives each amount and share) and income by source as bars, each with its total. Click a category or "Other" to see what's inside. Changing the period redraws only this part. At the bottom, monthly payments, plans and the cushion at a glance |
 | 2 | Transactions | Everything by day, a month at a time or all time. Filter by wallet, category (with its subcategories) or type; search notes and line descriptions. Click a transaction to edit or delete it |
 | 3 | Plans | **Monthly payments**: rent, subscriptions, loans; their sum per month, and which are paid this month (Pay records the expense with the real amount; "paid" counts what you really paid). A payment marked **the amount varies** (utilities, phone) is expected to cost the average of its last 3 payments; until it has any, the rough amount you entered. **Planned expenses**: a laptop, dental treatment; the total, what is saved for each (Save puts money aside: it stays in your wallets, only marked for the plan), Bought records the purchase. **Safety cushion**: the target, how much is saved, how much is left, how many months of payments it covers |
 | 4 | Wallets | Wallets by type with their balance (and its value in the base currency). **Check** compares with the real balance and records the difference. **Debts**: one entry per person, Give / Get money |
@@ -80,7 +80,7 @@ Before the first change of each day the server copies the database to `finance-Y
 (`finance-YYYY-MM-DD_HH-MM-SS.db`). The last 14 of each kind are kept. To roll back, stop the server and copy a backup
 over `data/finance.db`.
 
-`data/settings.json` keeps the theme and the tabs' view options. Delete it to reset them.
+`data/settings.json` keeps the theme, the tabs' view options and whether balances are hidden. Delete it to reset them.
 
 ### Tables
 
@@ -127,5 +127,6 @@ web/js/money.js        formatting and exact sums
 web/js/editor.js       dialogs: transaction, wallet, balance check, payment, plan
 web/js/chart.js        pie, meter, segmented bar
 web/js/rangepicker.js  period picker: two months of calendar
+web/js/privacy.js      hide balances (the eye button)
 web/js/views/*.js      one file per tab; reports.js is the income and spending part of Overview
 ```

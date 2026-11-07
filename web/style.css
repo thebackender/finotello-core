@@ -734,6 +734,12 @@ table.currencies td { vertical-align: middle; }
 
 /* Overview: the income and spending part below the cards */
 .report-part { margin-top: 16px; }
+
+/* Hide balances: the eye button and the dots in place of amounts. */
+.eye-btn { width: 28px; height: 28px; }
+.eye-btn:hover:not(:disabled) { color: var(--foreground); }
+.tile-label .eye-btn { margin-left: 2px; vertical-align: middle; }
+.masked { letter-spacing: 0.04em; }
 .report-part + .cards-3 { margin-top: 16px; }
 
 /* Period picker: a button with the period, and two months of calendar under it. */
