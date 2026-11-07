@@ -77,8 +77,7 @@ export function renderReports(container) {
   const ticket = ++seq;
 
   root.innerHTML = `
-    <div class="toolbar section-head">
-      <h2>Income and spending</h2>
+    <div class="toolbar">
       <span class="period"></span>
     </div>
     <div class="report-body is-loading"><div class="empty">Loading…</div></div>`;

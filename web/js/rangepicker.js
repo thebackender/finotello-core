@@ -38,7 +38,7 @@ function monthHTML(month) {
  */
 export function rangePicker(host, { from, to, onApply, onReset }) {
   host.innerHTML = `<div class="range-picker">
-    <button type="button" class="range-btn" aria-haspopup="dialog" aria-expanded="false">
+    <button type="button" class="range-btn" title="Period of the spending and income below" aria-haspopup="dialog" aria-expanded="false">
       ${icon('calendar', 16, 'muted')}<span>${esc(fmtPeriod(from, to))}</span>${icon('chevronDown', 14, 'muted')}
     </button>
     <div class="range-pop" role="dialog" aria-label="Pick a period" hidden>

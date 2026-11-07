@@ -733,8 +733,8 @@ table.currencies td { vertical-align: middle; }
 }
 
 /* Overview: the income and spending part below the cards */
-.report-part { margin-top: 28px; }
-.section-head h2 { margin: 0 8px 0 0; }
+.report-part { margin-top: 16px; }
+.report-part + .cards-3 { margin-top: 16px; }
 
 /* Period picker: a button with the period, and two months of calendar under it. */
 .range-picker { position: relative; }

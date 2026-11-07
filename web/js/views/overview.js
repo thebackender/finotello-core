@@ -64,6 +64,8 @@ export function render(view) {
         </div>
       </section>
 
+      <div class="report-part"></div>
+
       <div class="cards-3">
         <section class="card">
           <header class="card-head"><h3>${icon('calendarCheck', 16, 'muted')} Monthly payments</h3><a href="#plans">All</a></header>
@@ -100,8 +102,6 @@ export function render(view) {
              <a class="button-link" href="#plans">Set a target</a>`}
         </section>
       </div>
-
-      <div class="report-part"></div>
     </div>`;
 
   root.addEventListener('click', (e) => {
